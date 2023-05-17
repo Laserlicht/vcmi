@@ -79,6 +79,8 @@ set(client_SRCS
 	renderSDL/SDLRWwrapper.cpp
 	renderSDL/ScreenHandler.cpp
 	renderSDL/SDL_Extensions.cpp
+	renderSDL/xbrzscale/libxbrzscale.cpp
+	renderSDL/xbrzscale/xbrz/xbrz.cpp
 
 	widgets/Buttons.cpp
 	widgets/CArtifactHolder.cpp
@@ -221,7 +223,12 @@ set(client_HEADERS
 	renderSDL/ScreenHandler.h
 	renderSDL/SDL_Extensions.h
 	renderSDL/SDL_PixelAccess.h
-
+	renderSDL/xbrzscale/libxbrzscale.h
+	renderSDL/xbrzscale/xbrz/config.h
+	renderSDL/xbrzscale/xbrz/xbrz.h
+	renderSDL/xbrzscale/xbrz/xbrz_config.h
+	renderSDL/xbrzscale/xbrz/xbrz_tools.h
+	
 	widgets/Buttons.h
 	widgets/CArtifactHolder.h
 	widgets/CComponent.h
