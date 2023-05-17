@@ -409,6 +409,8 @@ if (ffmpeg_INCLUDE_DIRS)
 	)
 endif()
 
+target_link_libraries(vcmiclient PUBLIC ${VCMI_LIB_TARGET} TBB::tbb)
+
 vcmi_set_output_dir(vcmiclient "")
 enable_pch(vcmiclient)
 
