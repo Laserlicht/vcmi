@@ -26,6 +26,11 @@
 
 #include "xbrz/xbrz.h"
 
+#include <tbb/parallel_for.h>
+
+const int TASK_GRANULARITY = 16;
+const xbrz::ScalerCfg cfg;
+
 //#include <cstdio>
 //#include <cstdint>
 //#include "SDL.h"
@@ -191,7 +196,11 @@ SDL_Surface* libxbrzscale::scale(SDL_Surface* src_img, int scale){
   if(bEnableOutput)printf("Scaling image...\n");
   uint32_t* dest = new uint32_t[dst_width * dst_height];
 
-  xbrz::scale(scale, in_data, dest, src_width, src_height, xbrz::ColorFormat::ARGB);
+  tbb::parallel_for(tbb::blocked_range<int>(0, src_height, TASK_GRANULARITY), [=, &cfg](const tbb::blocked_range<int>& r)
+  {
+        xbrz::scale(scale, in_data, dest, src_width, src_height, xbrz::ColorFormat::ARGB, cfg, r.begin(), r.end());
+  });
+  
   delete [] in_data;
 
   if(bEnableOutput)printf("Saving image...\n");
@@ -203,6 +212,7 @@ SDL_Surface* libxbrzscale::scale(SDL_Surface* src_img, int scale){
   }
 
   uint32toSurface(dest,dst_img);
+  delete [] dest;
 
   return dst_img;
 }
