@@ -16,6 +16,8 @@
 #include "../render/Colors.h"
 #include "../CMT.h"
 
+#include "../renderSDL/xbrzscale/libxbrzscale.h"
+
 #include <SDL_render.h>
 
 Rect CSDL_Ext::fromSDL(const SDL_Rect & rect)
@@ -62,7 +64,14 @@ void CSDL_Ext::setAlpha(SDL_Surface * bg, int value)
 void CSDL_Ext::updateRect(SDL_Surface *surface, const Rect & rect )
 {
 	SDL_Rect rectSDL = CSDL_Ext::toSDL(rect);
-	if(0 !=SDL_UpdateTexture(screenTexture, &rectSDL, surface->pixels, surface->pitch))
+	rectSDL.x *= 3;
+	rectSDL.y *= 3;
+	rectSDL.w *= 3;
+	rectSDL.h *= 3;
+	
+	SDL_Surface* surfaceFiltered = libxbrzscale::scale(surface, 3);
+	
+	if(0 !=SDL_UpdateTexture(screenTexture, &rectSDL, surfaceFiltered->pixels, surfaceFiltered->pitch))
 		logGlobal->error("%sSDL_UpdateTexture %s", __FUNCTION__, SDL_GetError());
 
 	SDL_RenderClear(mainRenderer);
@@ -70,6 +79,7 @@ void CSDL_Ext::updateRect(SDL_Surface *surface, const Rect & rect )
 		logGlobal->error("%sSDL_RenderCopy %s", __FUNCTION__, SDL_GetError());
 	SDL_RenderPresent(mainRenderer);
 
+    SDL_FreeSurface(surfaceFiltered);
 }
 
 SDL_Surface * CSDL_Ext::newSurface(int w, int h)
@@ -864,4 +874,3 @@ void CSDL_Ext::getClipRect(SDL_Surface * src, Rect & other)
 template SDL_Surface * CSDL_Ext::createSurfaceWithBpp<2>(int, int);
 template SDL_Surface * CSDL_Ext::createSurfaceWithBpp<3>(int, int);
 template SDL_Surface * CSDL_Ext::createSurfaceWithBpp<4>(int, int);
-
