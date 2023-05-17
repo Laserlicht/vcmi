@@ -243,7 +243,7 @@ void ScreenHandler::initializeScreenBuffers()
 #endif
 
 	auto logicalSize = getPreferredLogicalResolution();
-	SDL_RenderSetLogicalSize(mainRenderer, logicalSize.x, logicalSize.y);
+	SDL_RenderSetLogicalSize(mainRenderer, logicalSize.x*3, logicalSize.y*3);
 
 	screen = SDL_CreateRGBSurface(0, logicalSize.x, logicalSize.y, 32, rmask, gmask, bmask, amask);
 	if(nullptr == screen)
@@ -254,7 +254,7 @@ void ScreenHandler::initializeScreenBuffers()
 	//No blending for screen itself. Required for proper cursor rendering.
 	SDL_SetSurfaceBlendMode(screen, SDL_BLENDMODE_NONE);
 
-	screenTexture = SDL_CreateTexture(mainRenderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, logicalSize.x, logicalSize.y);
+	screenTexture = SDL_CreateTexture(mainRenderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, logicalSize.x*3, logicalSize.y*3);
 
 	if(nullptr == screenTexture)
 	{
