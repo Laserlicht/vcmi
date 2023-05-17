@@ -20,6 +20,7 @@
 #include "../render/Colors.h"
 #include "../renderSDL/SDL_Extensions.h"
 #include "../renderSDL/ScreenHandler.h"
+#include "../renderSDL/xbrzscale/libxbrzscale.h"
 #include "../CMT.h"
 #include "../CPlayerInterface.h"
 #include "../battle/BattleInterface.h"
@@ -217,7 +218,7 @@ void CGuiHandler::handleEvents()
 
 		if (currentEvent.type == SDL_MOUSEMOTION)
 		{
-			cursorPosition = Point(currentEvent.motion.x, currentEvent.motion.y);
+			cursorPosition = Point(currentEvent.motion.x/3, currentEvent.motion.y/3);
 			mouseButtonsMask = currentEvent.motion.state;
 		}
 		SDLEventsQueue.pop();
@@ -681,7 +682,9 @@ void CGuiHandler::renderFrame()
 		if(settings["video"]["showfps"].Bool())
 			drawFPSCounter();
 
-		SDL_UpdateTexture(screenTexture, nullptr, screen->pixels, screen->pitch);
+		SDL_Surface* screenFiltered = libxbrzscale::scale(screen, 3);
+
+		SDL_UpdateTexture(screenTexture, nullptr, screenFiltered->pixels, screenFiltered->pitch);
 
 		SDL_RenderClear(mainRenderer);
 		SDL_RenderCopy(mainRenderer, screenTexture, nullptr, nullptr);
@@ -689,6 +692,8 @@ void CGuiHandler::renderFrame()
 		CCS->curh->render();
 
 		SDL_RenderPresent(mainRenderer);
+
+		SDL_FreeSurface(screenFiltered);
 
 		disposed.clear();
 	}
