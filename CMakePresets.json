@@ -295,6 +295,11 @@
             "inherits": "default-debug"
         },
         {
+            "name": "linux-gcc-appimage",
+            "configurePreset": "linux-gcc-appimage",
+            "inherits": "default-debug"
+        },
+        {
             "name": "macos-xcode-release",
             "configurePreset": "macos-xcode-release",
             "inherits": "default-release"
