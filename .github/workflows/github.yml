@@ -80,7 +80,7 @@ jobs:
             os: ubuntu-20.04
             test: 0
             preset: linux-gcc-debug
-          - platform: linux
+          - platform: linux-appimage
             os: ubuntu-20.04
             test: 0
             preset: linux-appimage-debug
