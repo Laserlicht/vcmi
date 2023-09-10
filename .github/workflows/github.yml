@@ -223,7 +223,7 @@ jobs:
     - name: Create appimage package
       if: ${{ startsWith(matrix.platform, 'linux-appimage') }}
       run: |
-        make all install DESTDIR=AppDir
+        cmake --build --target INSTALL --preset ${{matrix.preset}}
         wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
         chmod +x linuxdeploy*.AppImage
         ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
