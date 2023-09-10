@@ -83,6 +83,7 @@ jobs:
           - platform: linux-appimage
             os: ubuntu-20.04
             test: 0
+            extension: appimage
             preset: linux-appimage-debug
           - platform: mac-intel
             os: macos-12
@@ -223,11 +224,13 @@ jobs:
     - name: Create appimage package
       if: ${{ startsWith(matrix.platform, 'linux-appimage') }}
       run: |
+        cd ${{github.workspace}}/out/build/${{matrix.preset}}
         ninja -k0
         DESTDIR=AppDir ninja install
         wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
         chmod +x linuxdeploy*.AppImage
         ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
+        echo APPIMAGE_PATH="$(ls ${{ github.workspace }}/out/build/${{matrix.preset}}/*.${{ matrix.extension }})" >> $GITHUB_ENV
 
     - name: Additional logs
       if: ${{ failure() && steps.cpack.outcome == 'failure' && matrix.platform == 'msvc' }}
@@ -250,6 +253,14 @@ jobs:
         name: ${{ env.VCMI_PACKAGE_FILE_NAME }} - ${{ matrix.platform }}
         path: |
           ${{ env.ANDROID_APK_PATH }}
+          
+    - name: appimage artifacts
+      if: ${{ startsWith(matrix.platform, 'linux-appimage') }}
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ env.VCMI_PACKAGE_FILE_NAME }} - ${{ matrix.platform }}
+        path: |
+          ${{ env.APPIMAGE_PATH }}
 
     - name: Android JNI ${{matrix.platform}}
       if: ${{ startsWith(matrix.platform, 'android') && github.ref == 'refs/heads/master' }}
