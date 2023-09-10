@@ -290,8 +290,8 @@
             "inherits": "default-release"
         },
         {
-            "name": "linux-gcc-debug",
-            "configurePreset": "linux-gcc-debug",
+            "name": "linux-appimage-debug",
+            "configurePreset": "linux-appimage-debug",
             "inherits": "default-debug"
         },
         {
