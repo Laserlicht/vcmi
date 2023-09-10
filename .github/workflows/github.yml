@@ -230,7 +230,7 @@ jobs:
         wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
         wget https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
         chmod +x linuxdeploy*.AppImage
-        LD_LIBRARY_PATH=${{github.workspace}}/out/build/${{matrix.preset}}/AppDir/usr/lib/vcmi ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage --plugin qt --custom-apprun AppDir/usr/bin/vcmilauncher
+        LD_LIBRARY_PATH=AppDir/usr/lib/vcmi ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage --plugin qt --custom-apprun AppDir/usr/bin/vcmilauncher
         rm linuxdeploy*.AppImage
         echo APPIMAGE_PATH="$(ls ${{ github.workspace }}/out/build/${{matrix.preset}}/*.${{ matrix.extension }})" >> $GITHUB_ENV
 
