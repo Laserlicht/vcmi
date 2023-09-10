@@ -99,7 +99,7 @@
                 "ENABLE_PCH" : "OFF",
                 "CMAKE_C_COMPILER": "/usr/bin/gcc",
                 "CMAKE_CXX_COMPILER": "/usr/bin/g++",
-                "CMAKE_INSTALL_PREFIX": "AppDir"
+                "CMAKE_INSTALL_PREFIX": "/usr"
             }
         },
         {
