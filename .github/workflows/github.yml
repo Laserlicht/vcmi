@@ -83,7 +83,7 @@ jobs:
           - platform: linux-appimage
             os: ubuntu-20.04
             test: 0
-            extension: appimage
+            extension: AppImage
             preset: linux-appimage-debug
           - platform: mac-intel
             os: macos-12
@@ -224,7 +224,7 @@ jobs:
     - name: Create appimage package
       if: ${{ startsWith(matrix.platform, 'linux-appimage') }}
       run: |
-        cd ${{github.workspace}}/out/build/${{matrix.preset}}
+        cd '${{github.workspace}}/out/build/${{matrix.preset}}'
         ninja -k0
         DESTDIR=AppDir ninja install
         wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
