@@ -228,10 +228,11 @@ jobs:
         ninja -k0
         DESTDIR=AppDir ninja install
         wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+        wget https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
         chmod +x linuxdeploy*.AppImage
         export LD_LIBRARY_PATH=${{github.workspace}}/out/build/${{matrix.preset}}/AppDir/usr/lib/vcmi
-        ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
-        rm linuxdeploy-x86_64.AppImage
+        ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage --plugin qt
+        rm linuxdeploy*.AppImage
         echo APPIMAGE_PATH="$(ls ${{ github.workspace }}/out/build/${{matrix.preset}}/*.${{ matrix.extension }})" >> $GITHUB_ENV
 
     - name: Additional logs
