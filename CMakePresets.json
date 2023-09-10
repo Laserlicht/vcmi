@@ -89,6 +89,20 @@
             }
         },
         {
+            "name": "linux-appimage-debug",
+            "displayName": "AppImage x86_64-pc-linux-gnu (debug)",
+            "description": "VCMI Linux AppImage (Debug)",
+            "inherits": "linux-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "ENABLE_LUA" : "ON",
+                "ENABLE_PCH" : "OFF",
+                "CMAKE_C_COMPILER": "/usr/bin/gcc",
+                "CMAKE_CXX_COMPILER": "/usr/bin/g++",
+                "CMAKE_INSTALL_PREFIX": "/usr"
+            }
+        },
+        {
             "name": "linux-clang-test",
             "displayName": "Clang x86_64-pc-linux-gnu with unit testing",
             "description": "VCMI Linux Clang",

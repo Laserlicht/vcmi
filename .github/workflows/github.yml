@@ -72,10 +72,6 @@ jobs:
             os: ubuntu-22.04
             test: 0
             preset: linux-clang-test
-          - platform: linux-appimage
-            os: ubuntu-22.04
-            test: 0
-            preset: linux-clang-test
           - platform: linux
             os: ubuntu-20.04
             test: 0
@@ -84,6 +80,10 @@ jobs:
             os: ubuntu-20.04
             test: 0
             preset: linux-gcc-debug
+          - platform: linux
+            os: ubuntu-20.04
+            test: 0
+            preset: linux-appimage-debug
           - platform: mac-intel
             os: macos-12
             test: 0
@@ -219,6 +219,14 @@ jobs:
         cd android
         ./gradlew assembleDaily --info
         echo ANDROID_APK_PATH="$(ls ${{ github.workspace }}/android/vcmi-app/build/outputs/apk/daily/*.${{ matrix.extension }})" >> $GITHUB_ENV
+
+    - name: Create appimage package
+      if: ${{ startsWith(matrix.platform, 'linux-appimage') }}
+      run: |
+        make install DESTDIR=AppDir
+        wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+        chmod +x linuxdeploy*.AppImage
+        ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
 
     - name: Additional logs
       if: ${{ failure() && steps.cpack.outcome == 'failure' && matrix.platform == 'msvc' }}
