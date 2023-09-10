@@ -72,6 +72,10 @@ jobs:
             os: ubuntu-22.04
             test: 0
             preset: linux-clang-test
+          - platform: linux-appimage
+            os: ubuntu-22.04
+            test: 0
+            preset: linux-clang-test
           - platform: linux
             os: ubuntu-20.04
             test: 0
