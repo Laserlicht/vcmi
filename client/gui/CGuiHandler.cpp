@@ -26,6 +26,7 @@
 #include "../render/EFont.h"
 #include "../renderSDL/ScreenHandler.h"
 #include "../renderSDL/RenderHandler.h"
+#include "../renderSDL/scale/scale.h"
 #include "../CMT.h"
 #include "../CPlayerInterface.h"
 #include "../battle/BattleInterface.h"
@@ -122,7 +123,11 @@ void CGuiHandler::renderFrame()
 		if(settings["video"]["showfps"].Bool())
 			drawFPSCounter();
 
-		SDL_UpdateTexture(screenTexture, nullptr, screen->pixels, screen->pitch);
+		auto before = std::chrono::high_resolution_clock::now();
+		SDL_Surface* screenFiltered = scale::xbrz(screen, 2);
+		std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - before).count() << "\n";
+
+		SDL_UpdateTexture(screenTexture, nullptr, screenFiltered->pixels, screenFiltered->pitch);
 
 		SDL_RenderClear(mainRenderer);
 		SDL_RenderCopy(mainRenderer, screenTexture, nullptr, nullptr);
@@ -130,6 +135,8 @@ void CGuiHandler::renderFrame()
 		CCS->curh->render();
 
 		windows().onFrameRendered();
+
+		SDL_FreeSurface(screenFiltered);
 	}
 
 	SDL_RenderPresent(mainRenderer);

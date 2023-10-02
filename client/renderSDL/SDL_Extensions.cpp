@@ -16,6 +16,8 @@
 #include "../render/Colors.h"
 #include "../CMT.h"
 
+#include "../renderSDL/scale/scale.h"
+
 #include "../../lib/GameConstants.h"
 
 #include <SDL_render.h>
@@ -64,7 +66,14 @@ void CSDL_Ext::setAlpha(SDL_Surface * bg, int value)
 void CSDL_Ext::updateRect(SDL_Surface *surface, const Rect & rect )
 {
 	SDL_Rect rectSDL = CSDL_Ext::toSDL(rect);
-	if(0 !=SDL_UpdateTexture(screenTexture, &rectSDL, surface->pixels, surface->pitch))
+	rectSDL.x *= 2;
+	rectSDL.y *= 2;
+	rectSDL.w *= 2;
+	rectSDL.h *= 2;
+
+	SDL_Surface* surfaceFiltered = scale::xbrz(surface, 2);
+
+	if(0 !=SDL_UpdateTexture(screenTexture, &rectSDL, surfaceFiltered->pixels, surfaceFiltered->pitch))
 		logGlobal->error("%sSDL_UpdateTexture %s", __FUNCTION__, SDL_GetError());
 
 	SDL_RenderClear(mainRenderer);
@@ -72,6 +81,7 @@ void CSDL_Ext::updateRect(SDL_Surface *surface, const Rect & rect )
 		logGlobal->error("%sSDL_RenderCopy %s", __FUNCTION__, SDL_GetError());
 	SDL_RenderPresent(mainRenderer);
 
+    SDL_FreeSurface(surfaceFiltered);
 }
 
 SDL_Surface * CSDL_Ext::newSurface(int w, int h)

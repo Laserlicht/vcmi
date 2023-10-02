@@ -27,7 +27,7 @@ InputSourceMouse::InputSourceMouse()
 
 void InputSourceMouse::handleEventMouseMotion(const SDL_MouseMotionEvent & motion)
 {
-	Point newPosition(motion.x, motion.y);
+	Point newPosition(motion.x/2, motion.y/2);
 	Point distance(-motion.xrel, -motion.yrel);
 
 	mouseButtonsMask = motion.state;
@@ -42,7 +42,7 @@ void InputSourceMouse::handleEventMouseMotion(const SDL_MouseMotionEvent & motio
 
 void InputSourceMouse::handleEventMouseButtonDown(const SDL_MouseButtonEvent & button)
 {
-	Point position(button.x, button.y);
+	Point position(button.x/2, button.y/2);
 
 	switch(button.button)
 	{
@@ -69,7 +69,7 @@ void InputSourceMouse::handleEventMouseWheel(const SDL_MouseWheelEvent & wheel)
 
 void InputSourceMouse::handleEventMouseButtonUp(const SDL_MouseButtonEvent & button)
 {
-	Point position(button.x, button.y);
+	Point position(button.x/2, button.y/2);
 
 	switch(button.button)
 	{

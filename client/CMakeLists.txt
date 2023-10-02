@@ -91,6 +91,8 @@ set(client_SRCS
 	renderSDL/SDLRWwrapper.cpp
 	renderSDL/ScreenHandler.cpp
 	renderSDL/SDL_Extensions.cpp
+	renderSDL/scale/scale.cpp
+	renderSDL/scale/xBRZ/xbrz.cpp
 
 	widgets/Buttons.cpp
 	widgets/CArtifactHolder.cpp
@@ -256,6 +258,8 @@ set(client_HEADERS
 	renderSDL/ScreenHandler.h
 	renderSDL/SDL_Extensions.h
 	renderSDL/SDL_PixelAccess.h
+	renderSDL/scale/scale.h
+	renderSDL/scale/xBRZ/xbrz.h
 
 	widgets/Buttons.h
 	widgets/CArtifactHolder.h
@@ -445,6 +449,8 @@ if (ffmpeg_INCLUDE_DIRS)
 		${ffmpeg_INCLUDE_DIRS}
 	)
 endif()
+
+target_link_libraries(vcmiclient PUBLIC ${VCMI_LIB_TARGET} TBB::tbb)
 
 vcmi_set_output_dir(vcmiclient "")
 enable_pch(vcmiclient)
