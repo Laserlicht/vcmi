@@ -72,6 +72,10 @@ jobs:
             os: ubuntu-22.04
             test: 0
             preset: linux-clang-test
+          - platform: linux-qt6
+            os: ubuntu-22.04
+            test: 0
+            preset: linux-package
           - platform: linux
             os: ubuntu-20.04
             test: 0
@@ -79,7 +83,6 @@ jobs:
           - platform: linux
             os: ubuntu-20.04
             test: 0
-            extension: deb
             preset: linux-package
           - platform: linux
             os: ubuntu-20.04
@@ -224,6 +227,7 @@ jobs:
         DEB_BUILD_OPTIONS: noautodbgsym
       with:
         buildpackage-opts: --build=binary --no-sign -d
+        docker-image: ubuntu:22.04
 
     - name: Test
       if: ${{ matrix.test == 1 }}
