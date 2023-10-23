@@ -72,6 +72,10 @@ jobs:
             os: ubuntu-22.04
             test: 0
             preset: linux-clang-test
+          - platform: linux-qt6
+            os: ubuntu-22.04
+            test: 0
+            preset: linux-package
           - platform: linux
             os: ubuntu-20.04
             test: 0
@@ -159,6 +163,7 @@ jobs:
         VCMI_BUILD_PLATFORM: x64
 
     - name: ccache
+      if: ${{ ! startsWith(matrix.preset, 'linux-package') }}
       uses: hendrikmuhs/ccache-action@v1.2
       with:
           key: ${{ matrix.preset }}
@@ -202,12 +207,22 @@ jobs:
         PULL_REQUEST: ${{ github.event.pull_request.number }}
 
     - name: CMake Preset with ccache
+      if: ${{ ! startsWith(matrix.preset, 'linux-package') }}
       run: |
         cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache --preset ${{ matrix.preset }}
 
     - name: Build Preset
+      if: ${{ ! startsWith(matrix.preset, 'linux-package') }}
       run: |
         cmake --build --preset ${{matrix.preset}}
+
+    - name: Build Linux packages
+      if: ${{ startsWith(matrix.preset, 'linux-package') }}
+      uses: jtdor/build-deb-action@v1
+      env:
+        DEB_BUILD_OPTIONS: noautodbgsym
+      with:
+        buildpackage-opts: --build=binary --no-sign
 
     - name: Test
       if: ${{ matrix.test == 1 }}
@@ -253,6 +268,14 @@ jobs:
         name: ${{ env.VCMI_PACKAGE_FILE_NAME }} - ${{ matrix.platform }}
         path: |
           ${{ env.ANDROID_APK_PATH }}
+          
+    - name: Linux artifacts
+      if: ${{ startsWith(matrix.preset, 'linux-package') }}
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ env.VCMI_PACKAGE_FILE_NAME }} - ${{ matrix.platform }}
+        path: |
+          ${{github.workspace}}/debian/artifacts
 
     - name: Android JNI ${{matrix.platform}}
       if: ${{ startsWith(matrix.platform, 'android') && github.ref == 'refs/heads/master' }}
