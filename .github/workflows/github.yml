@@ -79,6 +79,7 @@ jobs:
           - platform: linux
             os: ubuntu-20.04
             test: 0
+            extension: deb
             preset: linux-package
           - platform: linux
             os: ubuntu-20.04
