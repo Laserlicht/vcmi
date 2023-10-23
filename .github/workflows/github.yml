@@ -239,7 +239,7 @@ jobs:
       run: |
         echo DEB_PATH="${{github.workspace}}/out/build/${{matrix.preset}}"
         source '${{github.workspace}}/CI/${{matrix.platform}}/appimage.sh'
-        echo APPIMAGE_PATH="$(ls ${{ github.workspace }}/out/*.AppImage)" >> $GITHUB_ENV
+        echo APPIMAGE_PATH="$(ls ${{ env.DEB_PATH }}/out/*.AppImage)" >> $GITHUB_ENV
 
     - name: Additional logs
       if: ${{ failure() && steps.cpack.outcome == 'failure' && matrix.platform == 'msvc' }}
