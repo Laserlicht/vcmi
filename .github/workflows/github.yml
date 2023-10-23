@@ -72,14 +72,14 @@ jobs:
             os: ubuntu-22.04
             test: 0
             preset: linux-clang-test
-          - platform: linux-qt6
-            os: ubuntu-22.04
-            test: 0
-            preset: linux-package
           - platform: linux
             os: ubuntu-20.04
             test: 0
             preset: linux-gcc-test
+          - platform: linux
+            os: ubuntu-20.04
+            test: 0
+            preset: linux-package
           - platform: linux
             os: ubuntu-20.04
             test: 0
