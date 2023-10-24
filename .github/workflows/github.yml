@@ -238,10 +238,9 @@ jobs:
       if: ${{ startsWith(matrix.platform, 'linux-qt6') }}
       run: |
         DEB_PATH="${{github.workspace}}/out/build/${{matrix.preset}}"
-        echo DEB_PATH="${{github.workspace}}/out/build/${{matrix.preset}}" >> $GITHUB_ENV
         DEB_FILE="$(ls ${{github.workspace}}/out/build/${{matrix.preset}}/*.deb)"
         source '${{github.workspace}}/CI/${{matrix.platform}}/appimage.sh'
-        echo APPIMAGE_PATH="$(ls ${{ env.DEB_PATH }}/out/*.${{ matrix.extension }})" >> $GITHUB_ENV
+        echo APPIMAGE_PATH="$(ls ${{github.workspace}}/out/build/${{matrix.preset}}/out/*.${{ matrix.extension }})" >> $GITHUB_ENV
 
     - name: Additional logs
       if: ${{ failure() && steps.cpack.outcome == 'failure' && matrix.platform == 'msvc' }}
