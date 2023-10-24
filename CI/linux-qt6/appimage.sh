@@ -13,9 +13,8 @@ ingredients:
     - $DEB_FILE
  
 script:
-  - mv usr/lib/x86_64-linux-gnu/vcmi/* usr/lib/x86_64-linux-gnu/
-  - mv usr/games/* usr/share/vcmi/* -t usr/bin
-  - mv usr/lib/x86_64-linux-gnu/AI usr/bin/AI
+  - mv usr/lib/vcmi/* usr/lib/
+  - mv usr/lib/AI usr/bin/AI
   - sed -i -e 's#/usr#././#g' usr/bin/vcmiclient usr/bin/vcmilauncher usr/bin/vcmiserver usr/bin/vcmieditor
   - cp usr/share/applications/vcmilauncher.desktop vcmi.desktop
   - cp usr/share/icons/hicolor/scalable/apps/vcmiclient.svg vcmiclient.svg
