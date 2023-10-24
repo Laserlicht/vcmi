@@ -8,7 +8,7 @@ app: vcmi
 ingredients:
   dist: jammy
   debs: 
-    - $DEB_PATH/*
+    - $DEB_FILE
  
 script:
   - mv usr/lib/x86_64-linux-gnu/vcmi/* usr/lib/x86_64-linux-gnu/
