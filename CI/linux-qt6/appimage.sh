@@ -7,6 +7,8 @@ app: vcmi
  
 ingredients:
   dist: jammy
+  sources:
+    - deb http://us.archive.ubuntu.com/ubuntu/ jammy main universe
   debs: 
     - $DEB_FILE
  
