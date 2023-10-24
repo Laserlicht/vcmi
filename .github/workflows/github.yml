@@ -237,7 +237,7 @@ jobs:
     - name: Create appimage package
       if: ${{ startsWith(matrix.platform, 'linux-qt6') }}
       run: |
-        echo DEB_PATH="${{github.workspace}}/out/build/${{matrix.preset}}"
+        DEB_PATH="${{github.workspace}}/out/build/${{matrix.preset}}"
         source '${{github.workspace}}/CI/${{matrix.platform}}/appimage.sh'
         echo APPIMAGE_PATH="$(ls ${{ env.DEB_PATH }}/out/*.${{ matrix.extension }})" >> $GITHUB_ENV
 
