@@ -6,11 +6,15 @@ BEGIN
     BEGIN
         BLOCK "040904E4"
         BEGIN
-            VALUE "FileVersion",      "@APP_SHORT_VERSION@\0"
-            VALUE "ProductVersion",   "@APP_SHORT_VERSION@\0"
-            VALUE "FileDescription",    "Open-source game engine for Heroes of Might and Magic III"
-            VALUE "OriginalFilename",   "VCMI_client.exe"
-            VALUE "ProductName",        "VCMI Client"
+            VALUE "FileVersion",        "@APP_SHORT_VERSION@\0"
+            VALUE "ProductVersion",     "@APP_SHORT_VERSION@\0"
+            VALUE "FileDescription",    "Open-source game engine for Heroes of Might and Magic III\0"
+            VALUE "OriginalFilename",   "VCMI_client.exe\0"
+            VALUE "ProductName",        "VCMI Client\0"
         END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
     END
 END
