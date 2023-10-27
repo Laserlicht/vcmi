@@ -365,6 +365,10 @@ endif()
 
 if(WIN32)
 	target_sources(vcmiclient PRIVATE "VCMI_client.rc")
+
+	configure_file(VCMI_client_version.rc.in VCMI_client_version.rc @ONLY)
+	target_sources(vcmiclient PRIVATE "VCMI_client_version.rc")
+
 	set_target_properties(vcmiclient
 		PROPERTIES
 			OUTPUT_NAME "VCMI_client"

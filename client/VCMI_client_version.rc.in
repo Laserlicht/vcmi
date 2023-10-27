@@ -1,0 +1,16 @@
+1               VERSIONINFO
+FILEVERSION     @APP_SHORT_VERSION@
+PRODUCTVERSION  @APP_SHORT_VERSION@
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904E4"
+        BEGIN
+            VALUE "FileVersion",      "@APP_SHORT_VERSION@\0"
+            VALUE "ProductVersion",   "@APP_SHORT_VERSION@\0"
+            VALUE "FileDescription",    "Open-source game engine for Heroes of Might and Magic III"
+            VALUE "OriginalFilename",   "VCMI_client.exe"
+            VALUE "ProductName",        "VCMI Client"
+        END
+    END
+END
