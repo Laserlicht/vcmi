@@ -32,6 +32,7 @@
 
 #include "../../lib/CThreadHelper.h"
 #include "../../lib/CConfigHandler.h"
+#include "../../lib/CRandomGenerator.h"
 
 #include <SDL_render.h>
 
@@ -79,6 +80,8 @@ void CGuiHandler::init()
 	renderHandlerInstance = std::make_unique<RenderHandler>();
 	shortcutsHandlerInstance = std::make_unique<ShortcutHandler>();
 	framerateManagerInstance = std::make_unique<FramerateManager>(settings["video"]["targetfps"].Integer());
+
+	startScreenEffect(screenEffect::EARTHQUAKE, nullptr);
 }
 
 void CGuiHandler::handleEvents()
@@ -121,7 +124,14 @@ void CGuiHandler::renderFrame()
 			drawFPSCounter();
 	}
 
-	SDL_UpdateTexture(screenTexture, nullptr, screen->pixels, screen->pitch);
+	if(currentEffect == screenEffect::NONE)
+		SDL_UpdateTexture(screenTexture, nullptr, screen->pixels, screen->pitch);
+	else
+	{
+		SDL_Surface* tmpScreen = renderEffect(screen);
+		SDL_UpdateTexture(screenTexture, nullptr, tmpScreen->pixels, tmpScreen->pitch);
+		SDL_FreeSurface(tmpScreen);
+	}
 
 	SDL_RenderClear(mainRenderer);
 	SDL_RenderCopy(mainRenderer, screenTexture, nullptr, nullptr);
@@ -136,6 +146,42 @@ void CGuiHandler::renderFrame()
 
 	SDL_RenderPresent(mainRenderer);
 	framerate().framerateDelay(); // holds a constant FPS
+}
+
+void CGuiHandler::startScreenEffect(screenEffect effect, std::function<void()> effectCompleted)
+{
+	if(effect == screenEffect::NONE)
+		return;
+
+	currentEffectStartTick = GH.input().getTicks();
+	effectCompletedCB = effectCompleted;
+	currentEffect = effect;
+}
+
+SDL_Surface* CGuiHandler::renderEffect(SDL_Surface* surface)
+{
+	uint32_t elapsedMs = GH.input().getTicks() - currentEffectStartTick;
+
+	if(currentEffect == screenEffect::EARTHQUAKE)
+	{
+		int rndX = CRandomGenerator::getDefault().nextInt(10) - 5;
+		int rndY = CRandomGenerator::getDefault().nextInt(10) - 5;
+		SDL_Rect srcRect({ 0, 0, surface->w, surface->h});
+		SDL_Rect destRect({ rndX, rndY, surface->w, surface->h});
+		SDL_Surface* tmpScreen = SDL_CreateRGBSurface(0, surface->w, surface->h, surface->format->BitsPerPixel, surface->format->Rmask, surface->format->Gmask, surface->format->Bmask, surface->format->Amask);
+		SDL_BlitSurface(surface, &srcRect, tmpScreen, &destRect);
+
+		if(elapsedMs > 20000)
+		{
+			currentEffect = screenEffect::NONE;
+			if(effectCompletedCB)
+				effectCompletedCB();
+		}
+
+		return tmpScreen;
+	}
+
+	return surface;
 }
 
 CGuiHandler::CGuiHandler()

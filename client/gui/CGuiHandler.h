@@ -27,6 +27,7 @@ class IScreenHandler;
 class WindowHandler;
 class EventDispatcher;
 class InputHandler;
+struct SDL_Surface;
 
 // Handles GUI logic and drawing
 class CGuiHandler
@@ -103,6 +104,18 @@ public:
 
 	/// Calls provided functor in main thread on next execution frame
 	void dispatchMainThread(const std::function<void()> & functor);
+
+	enum screenEffect
+	{
+		NONE,
+		EARTHQUAKE
+	};
+	void startScreenEffect(screenEffect effect, std::function<void()> effectCompleted);
+private:
+	screenEffect currentEffect;
+	uint32_t currentEffectStartTick;
+	std::function<void()> effectCompletedCB;
+	SDL_Surface* renderEffect(SDL_Surface* surface);
 };
 
 extern CGuiHandler GH; //global gui handler
