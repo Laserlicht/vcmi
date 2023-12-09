@@ -81,7 +81,7 @@ void CGuiHandler::init()
 	shortcutsHandlerInstance = std::make_unique<ShortcutHandler>();
 	framerateManagerInstance = std::make_unique<FramerateManager>(settings["video"]["targetfps"].Integer());
 
-	startScreenEffect(screenEffect::EARTHQUAKE, nullptr);
+	startScreenEffect(screenEffect::EARTHQUAKE, 20000, nullptr);
 }
 
 void CGuiHandler::handleEvents()
@@ -148,13 +148,14 @@ void CGuiHandler::renderFrame()
 	framerate().framerateDelay(); // holds a constant FPS
 }
 
-void CGuiHandler::startScreenEffect(screenEffect effect, std::function<void()> effectCompleted)
+void CGuiHandler::startScreenEffect(screenEffect effect, int durationMs, std::function<void()> effectCompleted)
 {
 	if(effect == screenEffect::NONE)
 		return;
 
 	currentEffectStartTick = GH.input().getTicks();
 	effectCompletedCB = effectCompleted;
+	effectDurationMs = durationMs;
 	currentEffect = effect;
 }
 
@@ -171,7 +172,7 @@ SDL_Surface* CGuiHandler::renderEffect(SDL_Surface* surface)
 		SDL_Surface* tmpScreen = SDL_CreateRGBSurface(0, surface->w, surface->h, surface->format->BitsPerPixel, surface->format->Rmask, surface->format->Gmask, surface->format->Bmask, surface->format->Amask);
 		SDL_BlitSurface(surface, &srcRect, tmpScreen, &destRect);
 
-		if(elapsedMs > 20000)
+		if(elapsedMs > effectDurationMs)
 		{
 			currentEffect = screenEffect::NONE;
 			if(effectCompletedCB)
@@ -189,6 +190,7 @@ CGuiHandler::CGuiHandler()
 	, captureChildren(false)
 	, curInt(nullptr)
 	, fakeStatusBar(std::make_shared<EmptyStatusBar>())
+	, currentEffect(screenEffect::NONE)
 {
 }
 

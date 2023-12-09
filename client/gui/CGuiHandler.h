@@ -110,10 +110,11 @@ public:
 		NONE,
 		EARTHQUAKE
 	};
-	void startScreenEffect(screenEffect effect, std::function<void()> effectCompleted);
+	void startScreenEffect(screenEffect effect, int durationMs, std::function<void()> effectCompleted = nullptr);
 private:
 	screenEffect currentEffect;
 	uint32_t currentEffectStartTick;
+	int effectDurationMs;
 	std::function<void()> effectCompletedCB;
 	SDL_Surface* renderEffect(SDL_Surface* surface);
 };
