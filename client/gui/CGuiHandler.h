@@ -47,6 +47,7 @@ private:
 	std::unique_ptr<EventDispatcher> eventDispatcherInstance;
 	std::unique_ptr<InputHandler> inputHandlerInstance;
 
+	int programId = 0;
 public:
 	boost::mutex interfaceMutex;
 

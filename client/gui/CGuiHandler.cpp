@@ -26,6 +26,7 @@
 #include "../render/EFont.h"
 #include "../renderSDL/ScreenHandler.h"
 #include "../renderSDL/RenderHandler.h"
+#include "../renderSDL/ScreenFilter.h"
 #include "../CMT.h"
 #include "../CPlayerInterface.h"
 #include "../battle/BattleInterface.h"
@@ -79,6 +80,16 @@ void CGuiHandler::init()
 	renderHandlerInstance = std::make_unique<RenderHandler>();
 	shortcutsHandlerInstance = std::make_unique<ShortcutHandler>();
 	framerateManagerInstance = std::make_unique<FramerateManager>(settings["video"]["targetfps"].Integer());
+
+#ifndef __APPLE__
+	if (!initGLExtensions()) {
+		std::cout << "Couldn't init GL extensions!" << std::endl;
+	}
+	else
+	{
+		programId = compileProgram("std.vertex", "crt.fragment");
+	}
+#endif
 }
 
 void CGuiHandler::handleEvents()
@@ -120,6 +131,8 @@ void CGuiHandler::renderFrame()
 		if (settings["video"]["showfps"].Bool())
 			drawFPSCounter();
 	}
+
+
 
 	SDL_UpdateTexture(screenTexture, nullptr, screen->pixels, screen->pitch);
 

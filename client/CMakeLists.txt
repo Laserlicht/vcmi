@@ -88,6 +88,7 @@ set(client_SRCS
 	renderSDL/CursorHardware.cpp
 	renderSDL/CursorSoftware.cpp
 	renderSDL/RenderHandler.cpp
+	renderSDL/ScreenFilter.cpp
 	renderSDL/SDLImage.cpp
 	renderSDL/SDLImageLoader.cpp
 	renderSDL/SDLRWwrapper.cpp
@@ -259,6 +260,7 @@ set(client_HEADERS
 	renderSDL/CursorHardware.h
 	renderSDL/CursorSoftware.h
 	renderSDL/RenderHandler.h
+	renderSDL/ScreenFilter.h
 	renderSDL/SDLImage.h
 	renderSDL/SDLImageLoader.h
 	renderSDL/SDLRWwrapper.h
@@ -449,6 +451,10 @@ if(ffmpeg_LIBRARIES)
 else()
 	target_compile_definitions(vcmiclient PRIVATE DISABLE_VIDEO)
 endif()
+
+find_package(OpenGL REQUIRED)
+include_directories( ${OPENGL_INCLUDE_DIRS} )
+target_link_libraries(vcmiclient PRIVATE ${OPENGL_LIBRARIES} )
 
 target_include_directories(vcmiclient PUBLIC
 	${CMAKE_CURRENT_SOURCE_DIR}
