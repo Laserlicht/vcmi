@@ -35,6 +35,10 @@ PFNGLVALIDATEPROGRAMPROC glValidateProgram;
 PFNGLGETPROGRAMIVPROC glGetProgramiv;
 PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog;
 PFNGLUSEPROGRAMPROC glUseProgram;
+PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
+PFNGLUNIFORM2FVPROC glUniform2fv;
+PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv;
+PFNGLUNIFORM1IPROC glUniform1i;
 #endif
 
 #ifndef __APPLE__
@@ -52,11 +56,15 @@ bool initGLExtensions() {
 	glGetProgramiv = (PFNGLGETPROGRAMIVPROC)SDL_GL_GetProcAddress("glGetProgramiv");
 	glGetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)SDL_GL_GetProcAddress("glGetProgramInfoLog");
 	glUseProgram = (PFNGLUSEPROGRAMPROC)SDL_GL_GetProcAddress("glUseProgram");
+    glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)SDL_GL_GetProcAddress("glGetUniformLocation");
+    glUniform2fv = (PFNGLUNIFORM2FVPROC)SDL_GL_GetProcAddress("glUniform2fv");
+    glUniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)SDL_GL_GetProcAddress("glUniformMatrix4fv");
+    glUniform1i = (PFNGLUNIFORM1IPROC)SDL_GL_GetProcAddress("glUniform1i");
 
 	return glCreateShader && glShaderSource && glCompileShader && glGetShaderiv && 
 		glGetShaderInfoLog && glDeleteShader && glAttachShader && glCreateProgram &&
 		glLinkProgram && glValidateProgram && glGetProgramiv && glGetProgramInfoLog &&
-		glUseProgram;
+		glUseProgram && glGetUniformLocation && glUniform2fv && glUniformMatrix4fv && glUniform1i;
 }
 #endif
 
@@ -88,6 +96,8 @@ GLuint compileShader(const char* source, GLuint shaderType) {
 	} else {
 		std::cout << "Shader compilado correctamente. Id = " << result << std::endl;
 	}
+	std::cout << "OpenGL version: " << (const char*)glGetString(GL_VERSION) << std::endl;
+	std::cout << "GLSL version: " << (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
 	return result;
 }
 
@@ -124,6 +134,23 @@ GLuint compileProgram(const char* vtx, const char* frag) {
 		glDeleteShader(fragShaderId);
 	}
 	return programId;
+}
+
+void setUniform2fv(GLint id, const char * name, int a, int b)
+{
+    float fv[2] = { (float)a, (float)b };
+    GLuint loc = glGetUniformLocation(id, name);
+    glUniform2fv(loc, 1, fv);
+}
+void setUniformMatrix4fv(GLint id, const char * name, float matrix[16])
+{
+    GLuint loc = glGetUniformLocation(id, name);
+    glUniformMatrix4fv(loc, 1, GL_FALSE, matrix);
+}
+void setUniform1i(GLint id, const char * name, int val)
+{
+    GLuint loc = glGetUniformLocation(id, name);
+    glUniform1i(loc, val);
 }
 
 void presentBackBuffer(SDL_Renderer *renderer, SDL_Window* win, SDL_Texture* backBuffer, GLuint programId) {
