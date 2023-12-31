@@ -18,6 +18,8 @@ struct SDL_Surface;
 #include "../../lib/Point.h"
 #include "../render/IScreenHandler.h"
 
+inline SDL_Window * mainWindow;
+
 enum class EWindowMode
 {
 	// game runs in a window that covers part of the screen
@@ -70,7 +72,6 @@ class ScreenHandler final : public IScreenHandler
 	/// Performs validation of settings and updates them to valid values if necessary
 	void validateSettings();
 public:
-
 	/// Creates and initializes screen, window and SDL state
 	ScreenHandler();
 

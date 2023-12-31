@@ -21,9 +21,6 @@
 #include <SDL.h>
 #include <SDL_image.h>
 
-const int WIN_WIDTH = 640;
-const int WIN_HEIGHT = 480;
-
 #ifndef __APPLE__
 PFNGLCREATESHADERPROC glCreateShader;
 PFNGLSHADERSOURCEPROC glShaderSource;
@@ -145,8 +142,8 @@ void presentBackBuffer(SDL_Renderer *renderer, SDL_Window* win, SDL_Texture* bac
 
 	minx = 0.0f;
 	miny = 0.0f;
-	maxx = WIN_WIDTH;
-	maxy = WIN_HEIGHT;
+	maxx = SDL_GetWindowSurface(win)->w;
+	maxy = SDL_GetWindowSurface(win)->h;
 
 	minu = 0.0f;
 	maxu = 1.0f;
