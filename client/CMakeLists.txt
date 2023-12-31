@@ -94,6 +94,11 @@ set(client_SRCS
 	renderSDL/ScreenHandler.cpp
 	renderSDL/SDL_Extensions.cpp
 
+	renderSDL/shader/gl_core_3_1.c
+	renderSDL/shader/glsl_shader.c
+	renderSDL/shader/opengl.c
+	renderSDL/shader/util.c
+
 	widgets/Buttons.cpp
 	widgets/CAltar.cpp
 	widgets/CArtifactHolder.cpp
@@ -265,6 +270,12 @@ set(client_HEADERS
 	renderSDL/ScreenHandler.h
 	renderSDL/SDL_Extensions.h
 	renderSDL/SDL_PixelAccess.h
+
+	renderSDL/shader/gl_core_3_1.h
+	renderSDL/shader/glsl_shader.h
+	renderSDL/shader/stb_image.h
+	renderSDL/shader/config.h
+	renderSDL/shader/util.h
 
 	widgets/Buttons.h
 	widgets/CAltar.h
@@ -449,6 +460,10 @@ if(ffmpeg_LIBRARIES)
 else()
 	target_compile_definitions(vcmiclient PRIVATE DISABLE_VIDEO)
 endif()
+
+find_package(OpenGL REQUIRED)
+include_directories( ${OPENGL_INCLUDE_DIRS} )
+target_link_libraries(vcmiclient PRIVATE ${OPENGL_LIBRARIES} )
 
 target_include_directories(vcmiclient PUBLIC
 	${CMAKE_CURRENT_SOURCE_DIR}
