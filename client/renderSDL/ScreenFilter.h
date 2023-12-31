@@ -32,4 +32,9 @@ bool initGLExtensions();
 #endif
 GLuint compileShader(const char* source, GLuint shaderType);
 GLuint compileProgram(const char* vtx, const char* frag);
+
+void setUniform2fv(GLint id, const char * name, int a, int b);
+void setUniformMatrix4fv(GLint id, const char * name, float matrix[16]);
+void setUniform1i(GLint id, const char * name, int val);
+
 void presentBackBuffer(SDL_Renderer *renderer, SDL_Window* win, SDL_Texture* backBuffer, GLuint programId);
