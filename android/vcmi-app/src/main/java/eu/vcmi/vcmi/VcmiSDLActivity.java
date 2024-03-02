@@ -27,7 +27,7 @@ public class VcmiSDLActivity extends SDLActivity
                     new OnServerRegisteredCallback()));
     Messenger mServiceMessenger = null;
     boolean mIsServerServiceBound;
-    private View mProgressBar;
+    // private View mProgressBar;
 
     private ServiceConnection mServerServiceConnection = new ServiceConnection()
     {
@@ -63,10 +63,10 @@ public class VcmiSDLActivity extends SDLActivity
 
     public void displayProgress(final boolean show)
     {
-        if (mProgressBar != null)
+        /*if (mProgressBar != null)
         {
             mProgressBar.setVisibility(show ? View.VISIBLE : View.GONE);
-        }
+        }*/
     }
 
     @Override
@@ -84,9 +84,7 @@ public class VcmiSDLActivity extends SDLActivity
 
     @Override
     protected String getMainSharedObject() {
-        String library = "libvcmiclient.so";
-
-        return getContext().getApplicationInfo().nativeLibraryDir + "/" + library;
+        return String.format("%s/lib%s.so", getContext().getApplicationInfo().nativeLibraryDir, LibsLoader.CLIENT_LIB);
     }
 
     @Override
@@ -100,7 +98,8 @@ public class VcmiSDLActivity extends SDLActivity
     {
         super.onCreate(savedInstanceState);
 
-        if(mBrokenLibraries)
+        // TODO
+        /*if(mBrokenLibraries)
             return;
 
         final View outerLayout = getLayoutInflater().inflate(R.layout.activity_game, null, false);
@@ -111,7 +110,7 @@ public class VcmiSDLActivity extends SDLActivity
         layout.addView(mSurface);
         mLayout = layout;
 
-        setContentView(outerLayout);
+        setContentView(outerLayout);*/
     }
 
     @Override
