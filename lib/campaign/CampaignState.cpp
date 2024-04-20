@@ -141,7 +141,7 @@ bool CampaignBonus::isBonusForHero() const
 void CampaignHeader::loadLegacyData(ui8 campId)
 {
 	campaignRegions = CampaignRegions::getLegacy(campId);
-	numberOfScenarios = campaignRegions.getRegionCount();
+	numberOfScenarios = formatVersion() == CampaignVersion::Chr ? campaignRegions.getRegionCount() : VLC->generaltexth->getCampaignLength(campId);
 }
 
 bool CampaignHeader::playerSelectedDifficulty() const

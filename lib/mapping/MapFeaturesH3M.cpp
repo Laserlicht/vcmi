@@ -116,7 +116,6 @@ MapFormatFeaturesH3M MapFormatFeaturesH3M::getFeaturesCHR()
 	return result;
 }
 
-
 MapFormatFeaturesH3M MapFormatFeaturesH3M::getFeaturesWOG()
 {
 	MapFormatFeaturesH3M result = getFeaturesSOD();
