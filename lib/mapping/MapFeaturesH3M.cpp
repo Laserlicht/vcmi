@@ -25,6 +25,8 @@ MapFormatFeaturesH3M MapFormatFeaturesH3M::find(EMapFormat format, uint32_t hota
 			return getFeaturesAB();
 		case EMapFormat::SOD:
 			return getFeaturesSOD();
+		case EMapFormat::CHR:
+			return getFeaturesCHR();
 		case EMapFormat::WOG:
 			return getFeaturesWOG();
 		case EMapFormat::HOTA:
@@ -106,6 +108,14 @@ MapFormatFeaturesH3M MapFormatFeaturesH3M::getFeaturesSOD()
 
 	return result;
 }
+
+MapFormatFeaturesH3M MapFormatFeaturesH3M::getFeaturesCHR()
+{
+	MapFormatFeaturesH3M result = getFeaturesSOD();
+
+	return result;
+}
+
 
 MapFormatFeaturesH3M MapFormatFeaturesH3M::getFeaturesWOG()
 {

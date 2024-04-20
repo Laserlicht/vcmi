@@ -404,7 +404,10 @@ void CMainMenu::openCampaignScreen(std::string name)
 		return;
 	}
 
-	GH.windows().createAndPushWindow<CCampaignScreen>(config, name);
+	if(config[name]["items"].Vector().size() == 1)
+		CMainMenu::openCampaignLobby(config[name]["items"][0]["file"].String());
+	else
+		GH.windows().createAndPushWindow<CCampaignScreen>(config, name);
 }
 
 void CMainMenu::startTutorial()

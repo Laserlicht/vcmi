@@ -32,6 +32,8 @@ class IGameCallback;
 class DLL_LINKAGE CampaignRegions
 {
 	std::string campPrefix;
+	std::vector<std::string> campSuffix = {};
+	std::string campBackground = "";
 	int colorSuffixLength;
 
 	struct DLL_LINKAGE RegionDescription
@@ -60,12 +62,15 @@ public:
 	ImagePath getAvailableName(CampaignScenarioID which, int color) const;
 	ImagePath getSelectedName(CampaignScenarioID which, int color) const;
 	ImagePath getConqueredName(CampaignScenarioID which, int color) const;
+	int getRegionCount() const;
 
 	template <typename Handler> void serialize(Handler &h)
 	{
 		h & campPrefix;
 		h & colorSuffixLength;
 		h & regions;
+		h & campSuffix;
+		h & campBackground;
 	}
 
 	static CampaignRegions fromJson(const JsonNode & node);
@@ -95,6 +100,7 @@ class DLL_LINKAGE CampaignHeader : public boost::noncopyable
 public:
 	bool playerSelectedDifficulty() const;
 	bool formatVCMI() const;
+	CampaignVersion formatVersion() const;
 
 	std::string getDescriptionTranslated() const;
 	std::string getNameTranslated() const;
