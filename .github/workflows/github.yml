@@ -241,13 +241,6 @@ jobs:
           && '${{github.workspace}}/CI/${{matrix.platform}}/post_pack.sh' '${{github.workspace}}' "$(ls '${{ env.VCMI_PACKAGE_FILE_NAME }}'.*)"
         rm -rf _CPack_Packages
 
-    - name: Create Android package
-      if: ${{ startsWith(matrix.platform, 'android') }}
-      run: |
-        cd out/build/${{ matrix.preset }}/android-build
-        ./gradlew assembleDaily --info
-        echo ANDROID_APK_PATH="$(ls ${{ github.workspace }}/out/build/${{ matrix.preset }}/android-build/vcmi-app/build/outputs/apk/daily/*.${{ matrix.extension }})" >> $GITHUB_ENV
-
     - name: Additional logs
       if: ${{ failure() && steps.cpack.outcome == 'failure' && matrix.platform == 'msvc' }}
       run: |
@@ -262,6 +255,10 @@ jobs:
         path: |
           ${{github.workspace}}/out/build/${{matrix.preset}}/${{ env.VCMI_PACKAGE_FILE_NAME }}.${{ matrix.extension }}
 
+    - name: Find Android package
+      if: ${{ startsWith(matrix.platform, 'android') }}
+      run: |
+        echo ANDROID_APK_PATH="$(ls ${{ github.workspace }}/out/build/${{ matrix.preset }}/android-build/vcmi-app/build/outputs/apk/daily/*.${{ matrix.extension }})" >> $GITHUB_ENV
     - name: Android artifacts
       if: ${{ startsWith(matrix.platform, 'android') }}
       uses: actions/upload-artifact@v4
