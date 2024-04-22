@@ -61,13 +61,13 @@ jobs:
           #   preset: ios-release-conan-ccache
           #   conan_profile: ios-arm64
           #   conan_options: --options with_apple_system_libs=True
-          # - platform: msvc
-          #   os: windows-latest
-          #   test: 0
-          #   pack: 1
-          #   pack_type: RelWithDebInfo
-          #   extension: exe
-          #   preset: windows-msvc-release-ccache
+          - platform: msvc
+            os: windows-latest
+            test: 0
+            pack: 1
+            pack_type: RelWithDebInfo
+            extension: exe
+            preset: windows-msvc-release-ccache
           # - platform: mingw
           #   os: ubuntu-22.04
           #   test: 0
