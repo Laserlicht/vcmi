@@ -296,7 +296,7 @@ QString FirstLaunchView::getHeroesInstallDir()
 void FirstLaunchView::extractGogData()
 {
 #ifdef ENABLE_INNOEXTRACT
-	QString filterExe = tr("GOG executable") + " (*.exe)";
+	QString filterExe = tr("GOG executable_") + " (*.com);;" + tr("GOG executable") + " (*.exe)";
 	QString fileExe = QFileDialog::getOpenFileName(this, tr("Select a GOG installer (exe) file..."), QDir::homePath(), filterExe);
 	if(fileExe.isEmpty())
 		return;
