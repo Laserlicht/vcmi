@@ -244,9 +244,9 @@ jobs:
     - name: Create Android package
       if: ${{ startsWith(matrix.platform, 'android') }}
       run: |
-        cd android
+        cd out/build/${{ matrix.preset }}/android-build
         ./gradlew assembleDaily --info
-        echo ANDROID_APK_PATH="$(ls ${{ github.workspace }}/android/vcmi-app/build/outputs/apk/daily/*.${{ matrix.extension }})" >> $GITHUB_ENV
+        echo ANDROID_APK_PATH="$(ls ${{ github.workspace }}/out/build/${{ matrix.preset }}/android-build/vcmi-app/build/outputs/apk/daily/*.${{ matrix.extension }})" >> $GITHUB_ENV
 
     - name: Additional logs
       if: ${{ failure() && steps.cpack.outcome == 'failure' && matrix.platform == 'msvc' }}
@@ -377,9 +377,9 @@ jobs:
 
     - name: Create Android package
       run: |
-        cd android
+        cd out/build/${{ matrix.preset }}/android-build
         ./gradlew bundleRelease --info
-        echo ANDROID_APK_PATH="$(ls ${{ github.workspace }}/android/vcmi-app/build/outputs/bundle/release/*.aab)" >> $GITHUB_ENV
+        echo ANDROID_APK_PATH="$(ls ${{ github.workspace }}/out/build/${{ matrix.preset }}/android-build/vcmi-app/build/outputs/bundle/release/*.aab)" >> $GITHUB_ENV
       env:
         ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
         ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
