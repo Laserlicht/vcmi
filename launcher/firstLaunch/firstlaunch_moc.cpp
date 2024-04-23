@@ -189,6 +189,7 @@ void FirstLaunchView::languageSelected(const QString & selectedLanguage)
 	if(auto * mainWindow = dynamic_cast<MainWindow *>(QApplication::activeWindow()))
 	{
 		mainWindow->updateTranslation();
+		mainWindow->adjustSize();
 		mainWindow->update();
 	}
 }
