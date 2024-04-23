@@ -39,7 +39,7 @@ FirstLaunchView::FirstLaunchView(QWidget * parent)
 	ui->lineEditDataSystem->setText(pathToQString(boost::filesystem::absolute(VCMIDirs::get().dataPaths().front())));
 	ui->lineEditDataUser->setText(pathToQString(boost::filesystem::absolute(VCMIDirs::get().userDataPath())));
 
-	QScroller::grabGesture(ui->settingsScrollArea, QScroller::LeftMouseButtonGesture);
+	QScroller::grabGesture(ui->listWidgetLanguage, QScroller::LeftMouseButtonGesture);
 
 #ifndef ENABLE_INNOEXTRACT
 	ui->pushButtonGogInstall->hide();
