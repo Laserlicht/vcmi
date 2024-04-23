@@ -44,13 +44,13 @@ int EXPORT main(int argc, char * argv[])
 #ifdef VCMI_IOS
 	{
 #endif
-	QApplication vcmilauncher(argc, argv);
-
-	launcher::prepare();
-
 	QCoreApplication::setAttribute(Qt::AA_DisableHighDpiScaling);
 	if (qgetenv("QT_FONT_DPI").isEmpty())
 		qputenv("QT_FONT_DPI", "84");
+		
+	QApplication vcmilauncher(argc, argv);
+
+	launcher::prepare();
 
 	MainWindow mainWindow;
 	mainWindow.show();
