@@ -162,7 +162,7 @@ CModListView::CModListView(QWidget * parent)
 		manager->resetRepositories();
 	}
 
-	QScroller::grabGesture(tabWidget, QScroller::LeftMouseButtonGesture);
+	QScroller::grabGesture(ui->tabWidget, QScroller::LeftMouseButtonGesture);
 	
 #ifdef VCMI_MOBILE
 	for(auto * scrollWidget : {
