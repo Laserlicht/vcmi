@@ -16,6 +16,7 @@
 #include <QJsonArray>
 #include <QCryptographicHash>
 #include <QRegularExpression>
+#include <QScroller>
 
 #include "cmodlistmodel_moc.h"
 #include "cmodmanager.h"
@@ -412,6 +413,8 @@ void CModListView::selectMod(const QModelIndex & index)
 
 		ui->modInfoBrowser->setHtml(genModInfoText(mod));
 		ui->changelogBrowser->setHtml(genChangelogText(mod));
+		QScroller::grabGesture(ui->modInfoBrowser, QScroller::LeftMouseButtonGesture);
+		QScroller::grabGesture(ui->changelogBrowser, QScroller::LeftMouseButtonGesture);
 
 		bool hasInvalidDeps = !findInvalidDependencies(index.data(ModRoles::ModNameRole).toString()).empty();
 		bool hasBlockingMods = !findBlockingMods(index.data(ModRoles::ModNameRole).toString()).empty();
