@@ -21,6 +21,8 @@
 #include "../../lib/filesystem/Filesystem.h"
 #include "../languages.h"
 
+#include <QScroller>
+
 #ifdef ENABLE_INNOEXTRACT
 #include "cli/extract.hpp"
 #endif
@@ -36,6 +38,8 @@ FirstLaunchView::FirstLaunchView(QWidget * parent)
 
 	ui->lineEditDataSystem->setText(pathToQString(boost::filesystem::absolute(VCMIDirs::get().dataPaths().front())));
 	ui->lineEditDataUser->setText(pathToQString(boost::filesystem::absolute(VCMIDirs::get().userDataPath())));
+
+	QScroller::grabGesture(ui->settingsScrollArea, QScroller::LeftMouseButtonGesture);
 
 #ifndef ENABLE_INNOEXTRACT
 	ui->pushButtonGogInstall->hide();

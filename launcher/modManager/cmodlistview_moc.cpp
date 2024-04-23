@@ -161,13 +161,16 @@ CModListView::CModListView(QWidget * parent)
 	{
 		manager->resetRepositories();
 	}
+
+	QScroller::grabGesture(tabWidget, QScroller::LeftMouseButtonGesture);
 	
-#ifdef Q_OS_IOS
+#ifdef VCMI_MOBILE
 	for(auto * scrollWidget : {
 		(QAbstractItemView*)ui->allModsView,
 		(QAbstractItemView*)ui->screenshotsList})
 	{
 		QScroller::grabGesture(scrollWidget, QScroller::LeftMouseButtonGesture);
+
 		scrollWidget->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
 		scrollWidget->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 	}

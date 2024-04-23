@@ -20,6 +20,7 @@
 
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QScroller>
 
 #include "../../lib/CConfigHandler.h"
 
@@ -67,6 +68,7 @@ void CSettingsView::setDisplayList()
 void CSettingsView::loadSettings()
 {
 	ui->comboBoxShowIntro->setCurrentIndex(settings["video"]["showIntro"].Bool());
+	QScroller::grabGesture(ui->settingsScrollArea, QScroller::LeftMouseButtonGesture);
 
 #ifdef VCMI_MOBILE
 	ui->comboBoxFullScreen->hide();
