@@ -187,7 +187,10 @@ void FirstLaunchView::languageSelected(const QString & selectedLanguage)
 	node->String() = selectedLanguage.toStdString();
 
 	if(auto * mainWindow = dynamic_cast<MainWindow *>(QApplication::activeWindow()))
+	{
 		mainWindow->updateTranslation();
+		mainWindow->update();
+	}
 }
 
 bool FirstLaunchView::heroesDataUpdate()
