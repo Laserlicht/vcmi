@@ -117,7 +117,7 @@ void FirstLaunchView::on_comboBoxLanguage_currentIndexChanged(int index)
 	forceHeroesLanguage(ui->comboBoxLanguage->itemData(index).toString());
 }
 
-void FirstLaunchView::enterp()
+void FirstLaunchView::enterSetup()
 {
 	Languages::fillLanguages(ui->listWidgetLanguage, false);
 }
