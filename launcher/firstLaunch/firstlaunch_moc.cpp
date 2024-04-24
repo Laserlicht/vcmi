@@ -74,7 +74,7 @@ void FirstLaunchView::changeEvent(QEvent * event)
 		Languages::fillLanguages(ui->listWidgetLanguage, false);
 
 		if(auto * mainWindow = dynamic_cast<MainWindow *>(QApplication::activeWindow()))
-			mainWindow->enterSetup();
+			mainWindow->enterp();
 	}
 	QWidget::changeEvent(event);
 }
@@ -120,7 +120,7 @@ void FirstLaunchView::on_comboBoxLanguage_currentIndexChanged(int index)
 	forceHeroesLanguage(ui->comboBoxLanguage->itemData(index).toString());
 }
 
-void FirstLaunchView::enterSetup()
+void FirstLaunchView::enterp()
 {
 	Languages::fillLanguages(ui->listWidgetLanguage, false);
 }
@@ -195,6 +195,8 @@ void FirstLaunchView::languageSelected(const QString & selectedLanguage)
 		mainWindow->adjustSize();
 		mainWindow->update();
 	}
+	MainWindow mainWindow;
+	mainWindow.show();
 }
 
 bool FirstLaunchView::heroesDataUpdate()
