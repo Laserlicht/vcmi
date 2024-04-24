@@ -72,9 +72,6 @@ void FirstLaunchView::changeEvent(QEvent * event)
 	{
 		ui->retranslateUi(this);
 		Languages::fillLanguages(ui->listWidgetLanguage, false);
-
-		if(auto * mainWindow = dynamic_cast<MainWindow *>(QApplication::activeWindow()))
-			mainWindow->enterp();
 	}
 	QWidget::changeEvent(event);
 }
