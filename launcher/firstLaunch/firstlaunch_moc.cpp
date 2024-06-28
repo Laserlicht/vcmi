@@ -337,7 +337,7 @@ void FirstLaunchView::extractGogData()
 	if(fileBin.isEmpty())
 		return;
 	QString fileExe = fileSelection("exe", tr("GOG installer") + " (*.exe)", QFileInfo(fileBin).absolutePath());
-	QMessageBox::critical(this, fileBin, fileBin);
+	QMessageBox::critical(this, fileBin, fileExe);
 	if(fileExe.isEmpty())
 		return;
 
