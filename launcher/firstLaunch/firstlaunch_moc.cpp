@@ -333,9 +333,11 @@ void FirstLaunchView::extractGogData()
 	};
 
 	QString fileBin = fileSelection("bin", tr("GOG data") + " (*.bin)");
+	QMessageBox::critical(this, fileBin, fileBin);
 	if(fileBin.isEmpty())
 		return;
 	QString fileExe = fileSelection("exe", tr("GOG installer") + " (*.exe)", QFileInfo(fileBin).absolutePath());
+	QMessageBox::critical(this, fileBin, fileBin);
 	if(fileExe.isEmpty())
 		return;
 
