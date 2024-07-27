@@ -391,6 +391,7 @@ SDL_Window * ScreenHandler::createWindow()
 #endif
 
 #ifdef VCMI_ANDROID
+	SDL_SetHint("SDL_IOS_ORIENTATIONS", "LandscapeLeft LandscapeRight Portrait PortraitUpsideDown");
 	return createWindowImpl(Point(), SDL_WINDOW_RESIZABLE, false);
 #endif
 }
