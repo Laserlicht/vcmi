@@ -43,17 +43,6 @@ void InputSourceMouse::handleEventMouseMotion(const SDL_MouseMotionEvent & motio
 		GH.events().dispatchMouseDragged(newPosition, distance);
 	else
 		GH.input().setCursorPosition(newPosition);
-	
-	std::cout << newPosition.x << "  " << newPosition.y << "\n";
-	int deadzone = 10;
-	if(motion.x < deadzone)
-		SDL_WarpMouseInWindow(nullptr, deadzone, motion.y);
-	if(motion.y < deadzone)
-		SDL_WarpMouseInWindow(nullptr, motion.y, deadzone);
-	if(motion.x > GH.screenHandler().getRenderResolution().x - deadzone)
-		SDL_WarpMouseInWindow(nullptr, GH.screenHandler().getRenderResolution().x - deadzone, motion.y);
-	if(motion.y > GH.screenHandler().getRenderResolution().y - deadzone)
-		SDL_WarpMouseInWindow(nullptr, motion.x, GH.screenHandler().getRenderResolution().y - deadzone);
 }
 
 void InputSourceMouse::handleEventMouseButtonDown(const SDL_MouseButtonEvent & button)
