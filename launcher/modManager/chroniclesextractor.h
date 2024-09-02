@@ -26,6 +26,7 @@ class ChroniclesExtractor : public QObject
 	int getChronicleNo(QFile & file);
 	bool extractGogInstaller(QString filePath);
 	void createBaseMod() const;
+	std::tuple<QJsonObject, QJsonObject> createModJsons() const;
 	void createChronicleMod(int no);
 	void extractFiles(int no) const;
 

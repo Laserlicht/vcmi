@@ -140,6 +140,21 @@ void ChroniclesExtractor::createBaseMod() const
 	dir.cd("chronicles");
 	dir.mkdir("Mods");
 
+	auto [mod, chroniclesTarnum] = createModJsons();
+
+	QFile jsonFile(dir.filePath("mod.json"));
+    jsonFile.open(QFile::WriteOnly);
+    jsonFile.write(QJsonDocument(mod).toJson());
+
+	dir.mkdir("content");
+	dir.mkdir("content/config");
+	QFile jsonFileConfig(dir.filePath("content/config/chroniclesTarnum.json"));
+    jsonFileConfig.open(QFile::WriteOnly);
+    jsonFileConfig.write(QJsonDocument(chroniclesTarnum).toJson());
+}
+
+std::tuple<QJsonObject, QJsonObject> ChroniclesExtractor::createModJsons() const
+{
 	QJsonObject mod
 	{
 		{ "modType", "Expansion" },
@@ -148,11 +163,76 @@ void ChroniclesExtractor::createBaseMod() const
 		{ "author", "3DO" },
 		{ "version", "1.0" },
 		{ "contact", "vcmi.eu" },
+		{ "settings", QJsonObject{{
+				"mapFormat", QJsonObject{{
+					"chronicles", QJsonObject{{
+						{ "portraits", QJsonObject{{
+							{ "portraitTarnumBarbarian", 163 },
+							{ "portraitTarnumKnight", 164 },
+							{ "portraitTarnumWizard", 165 },
+							{ "portraitTarnumRanger", 166 },
+							{ "portraitTarnumOverlord", 167 },
+							{ "portraitTarnumBeastmaster", 168 }
+						}} }
+					}}
+				}}
+		  	}}
+		},
+		{ "heroes", QJsonArray{"config/chroniclesTarnum.json"} }
 	};
 
-	QFile jsonFile(dir.filePath("mod.json"));
-    jsonFile.open(QFile::WriteOnly);
-    jsonFile.write(QJsonDocument(mod).toJson());
+	auto fillJson = [](int i){
+		std::vector<std::vector<QString>> dataToFill = {
+			{"portraitTarnumBarbarian", "barbarian", "Hc_HPL137", "Hc_HPS137", "goblin"},
+			{"portraitTarnumKnight", "knight", "Hc_HPL138", "Hc_HPS138", "pikeman"},
+			{"portraitTarnumWizard", "wizard", "Hc_HPL139", "Hc_HPS139", "enchanter"},
+			{"portraitTarnumRanger", "ranger", "Hc_HPL140", "Hc_HPS140", "sharpshooter"},
+			{"portraitTarnumOverlord", "overlord", "Hc_HPL141", "Hc_HPS141", "troglodyte"},
+			{"portraitTarnumBeastmaster", "beastmaster", "Hc_HPL142", "Hc_HPS142", "gnoll"}
+		};
+
+		QJsonObject chroniclesTarnum
+		{
+			{ dataToFill[i][0], QJsonObject{{
+				{ "class", dataToFill[i][1] },
+				{ "special", true },
+				{ "images", QJsonObject{{
+						{"large", dataToFill[i][2]},
+						{"small", dataToFill[i][3]},
+						{"specialtySmall", "default"},
+						{"specialtyLarge", "default"}
+					}}
+				},
+				{ "texts", QJsonObject{{
+						{"name", ""},
+						{"biography", ""},
+						{"specialty", QJsonObject{{
+								{"description", ""},
+								{"tooltip", ""},
+								{"name", ""}
+							}}
+						}
+					}}
+				},
+				{ "army", QJsonArray{QJsonObject{{
+						{"creature", dataToFill[i][4]},
+						{"min", 1},
+						{"max", 1}
+					}}}
+				},
+				{ "skills", QJsonArray() },
+				{ "specialty", QJsonObject() }
+			}}}
+		};
+
+		return chroniclesTarnum;
+	};
+
+	QVariantMap map = fillJson(0).toVariantMap();
+	for(int i = 1; i < 6; i++)
+		map.insert(fillJson(i).toVariantMap());
+
+	return { mod, QJsonObject::fromVariantMap(map) };
 }
 
 void ChroniclesExtractor::createChronicleMod(int no)
