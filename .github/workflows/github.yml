@@ -15,6 +15,19 @@ env:
   BUILD_TYPE: Release
 
 jobs:
+  flatpak:
+    name: "Flatpak"
+    runs-on: ubuntu-latest
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:gnome-44
+      options: --privileged
+    steps:
+    - uses: actions/checkout@v4
+    - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      with:
+        bundle: VCMI_x86_64.flatpak
+        manifest-path: CI/flatpak/eu.vcmi.VCMI.yaml
+        cache-key: flatpak-builder-${{ github.sha }}
   build:
     strategy:
       matrix:
