@@ -21,6 +21,7 @@
 #include "gui/CGuiHandler.h"
 #include "gui/WindowHandler.h"
 #include "mapView/mapHandler.h"
+#include "api/ApiServer.h"
 
 #include "../CCallback.h"
 #include "../lib/CConfigHandler.h"
@@ -133,6 +134,8 @@ void CClient::newGame(CGameState * initializedGameState)
 	reinitScripting();
 	initPlayerEnvironments();
 	initPlayerInterfaces();
+	apiServer = ApiServer("0.0.0.0", 8081);
+	apiServer.startServer();
 }
 
 void CClient::loadGame(CGameState * initializedGameState)

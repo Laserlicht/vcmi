@@ -2,6 +2,8 @@ set(vcmiclientcommon_SRCS
 	StdInc.cpp
 	../CCallback.cpp
 
+	api/ApiServer.cpp
+
 	adventureMap/AdventureMapInterface.cpp
 	adventureMap/AdventureMapShortcuts.cpp
 	adventureMap/AdventureMapWidget.cpp
@@ -192,6 +194,8 @@ set(vcmiclientcommon_SRCS
 
 set(vcmiclientcommon_HEADERS
 	StdInc.h
+
+	api/ApiServer.h
 
 	adventureMap/AdventureMapInterface.h
 	adventureMap/AdventureMapShortcuts.h

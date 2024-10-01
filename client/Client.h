@@ -13,6 +13,7 @@
 #include <vcmi/Environment.h>
 
 #include "../lib/IGameCallback.h"
+#include "api/ApiServer.h"
 
 VCMI_LIB_NAMESPACE_BEGIN
 
@@ -237,6 +238,8 @@ private:
 
 	mutable boost::mutex pathCacheMutex;
 	std::map<const CGHeroInstance *, std::shared_ptr<CPathsInfo>> pathCache;
+
+	ApiServer apiServer;
 
 	void reinitScripting();
 };
