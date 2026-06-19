@@ -27,12 +27,14 @@
 #include "../lib/mapObjects/CGTownInstance.h"
 #include "../lib/callback/CCallback.h"
 #include "../lib/GameLibrary.h"
+#include "../lib/pathfinder/CGPathNode.h"
 
 #include "GameInstance.h"
 #include "GameEngine.h"
 #include "CServerHandler.h"
 #include "Client.h"
 #include "CPlayerInterface.h"
+#include "PlayerLocalState.h"
 #include "ClientCommandManager.h"
 
 #include <shared_mutex>
@@ -307,6 +309,87 @@ McpServer::McpServer() :
 	);
 
 	srv->register_tool(
+		mcp::tool{ "get_visible_tiles", "Get all tiles visible to current player", {{"type", "object"}}, mcp::json() },
+		[](const mcp::json &, const std::string &) -> mcp::json {
+			std::shared_lock lock(CGameState::mutex);
+
+			auto pi = GAME->interface();
+			if(!pi || !pi->cb)
+				return textContent("No active game");
+
+			auto player = pi->cb->getPlayerID();
+			if(!player)
+				return textContent("No player");
+
+			auto team = pi->cb->getPlayerTeam(*player);
+			if(!team)
+				return textContent("No team");
+
+			auto & map = GAME->server().client->gameState().getMap();
+			auto & fow = team->fogOfWarMap;
+			JsonNode tiles;
+			for(int z = 0; z < map.levels(); z++)
+			{
+				for(int x = 0; x < map.width; x++)
+				{
+					for(int y = 0; y < map.height; y++)
+					{
+						if(fow[int3(x, y, z)])
+						{
+							JsonNode tile;
+							tile["x"] = JsonNode(x);
+							tile["y"] = JsonNode(y);
+							tile["z"] = JsonNode(z);
+							tiles.Vector().push_back(tile);
+						}
+					}
+				}
+			}
+			return textContent(tiles.toCompactString());
+		}
+	);
+
+	srv->register_tool(
+		mcp::tool{ "get_map_content", "Get all visible map content (heroes, towns, objects)", {{"type", "object"}}, mcp::json() },
+		[](const mcp::json &, const std::string &) -> mcp::json {
+			std::shared_lock lock(CGameState::mutex);
+
+			auto pi = GAME->interface();
+			if(!pi || !pi->cb)
+				return textContent("No active game");
+
+			JsonNode result;
+
+			JsonNode heroes;
+			for(auto * h : pi->cb->getHeroesInfo())
+				heroes.Vector().push_back(heroToJson(h));
+			result["heroes"] = heroes;
+
+			JsonNode towns;
+			for(auto * t : pi->cb->getTownsInfo(true))
+				towns.Vector().push_back(townToJson(t));
+			result["towns"] = towns;
+
+			JsonNode objects;
+			for(auto * obj : pi->cb->getAllVisitableObjs())
+			{
+				JsonNode entry;
+				entry["id"] = JsonNode(obj->id.getNum());
+				entry["type"] = JsonNode(obj->ID.getNum());
+				entry["subtype"] = JsonNode(obj->subID.getNum());
+				entry["name"] = JsonNode(obj->getObjectName());
+				entry["x"] = JsonNode(obj->pos.x);
+				entry["y"] = JsonNode(obj->pos.y);
+				entry["z"] = JsonNode(obj->pos.z);
+				objects.Vector().push_back(entry);
+			}
+			result["objects"] = objects;
+
+			return textContent(result.toCompactString());
+		}
+	);
+
+	srv->register_tool(
 		mcp::tool{ "list_creatures", "List all creatures with their stats", {{"type", "object"}}, mcp::json() },
 		[](const mcp::json &, const std::string &) -> mcp::json {
 			JsonNode arr;
@@ -338,6 +421,51 @@ McpServer::McpServer() :
 		mcp::tool{ "get_config", "Get full merged game configuration", {{"type", "object"}}, mcp::json() },
 		[](const mcp::json &, const std::string &) -> mcp::json {
 			return textContent(getFullGameConfig().toCompactString());
+		}
+	);
+
+	srv->register_tool(
+		mcp::tool{ "move_hero", "Move a hero to a specific map tile (same as client-side click)", {
+			{"type", "object"},
+			{"properties", {
+				{"heroId", {
+					{"type", "number"},
+					{"description", "Hero instance ID"}
+				}},
+				{"x", {
+					{"type", "number"},
+					{"description", "Target X coordinate"}
+				}},
+				{"y", {
+					{"type", "number"},
+					{"description", "Target Y coordinate"}
+				}},
+				{"z", {
+					{"type", "number"},
+					{"description", "Target Z coordinate (level)"}
+				}}
+			}},
+			{"required", {"heroId", "x", "y", "z"}}
+		}, mcp::json() },
+		[](const mcp::json & params, const std::string &) -> mcp::json {
+			auto heroId = params["heroId"].get<int>();
+			int3 dest(params["x"].get<int>(), params["y"].get<int>(), params["z"].get<int>());
+
+			ENGINE->dispatchMainThread([heroId, dest]() {
+				auto pi = GAME->interface();
+				if(!pi || !pi->cb)
+					return;
+				auto obj = pi->cb->getObj(ObjectInstanceID(heroId), false);
+				if(!obj)
+					return;
+				auto hero = dynamic_cast<const CGHeroInstance *>(obj);
+				if(!hero)
+					return;
+
+				if(pi->localState->setPath(hero, dest, EPathfindingLayer::LAND))
+					pi->moveHero(hero, pi->localState->getPath(hero));
+			});
+			return textContent("Move queued for execution");
 		}
 	);
 
