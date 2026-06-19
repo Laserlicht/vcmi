@@ -18,6 +18,7 @@
 #include "../lib/CConfigHandler.h"
 #include "../lib/GameConstants.h"
 #include "../lib/json/JsonNode.h"
+#include "../lib/json/JsonUtils.h"
 #include "../lib/gameState/CGameState.h"
 #include "../lib/CPlayerState.h"
 #include "../lib/mapping/CMap.h"
@@ -25,6 +26,7 @@
 #include "../lib/mapObjects/CGHeroInstance.h"
 #include "../lib/mapObjects/CGTownInstance.h"
 #include "../lib/callback/CCallback.h"
+#include "../lib/GameLibrary.h"
 
 #include "GameInstance.h"
 #include "GameEngine.h"
@@ -36,6 +38,38 @@
 #include <shared_mutex>
 
 #ifdef ENABLE_MCP_SERVER
+
+static JsonNode getFullGameConfig()
+{
+	JsonNode result;
+	try
+	{
+		result = JsonUtils::assembleFromFiles("config/gameConfig.json");
+		if(!result.isStruct())
+			return result;
+		std::vector<std::string> keys;
+		for(auto & kv : result.Struct())
+			keys.push_back(kv.first);
+		for(auto & name : keys)
+		{
+			auto & value = result[name];
+			if(name == "settings" || !value.isVector())
+				continue;
+			JsonNode merged;
+			for(auto & entry : value.Vector())
+			{
+				JsonNode fileData = JsonUtils::assembleFromFiles(entry.String());
+				JsonUtils::mergeCopy(merged, fileData);
+			}
+			result[name] = merged;
+		}
+	}
+	catch(const std::exception & e)
+	{
+		logGlobal->error("Failed to assemble game config: %s", e.what());
+	}
+	return result;
+}
 
 static JsonNode heroToJson(const CGHeroInstance * h)
 {
@@ -53,6 +87,22 @@ static JsonNode heroToJson(const CGHeroInstance * h)
 	entry["knowledge"] = JsonNode(h->getPrimSkillLevel(PrimarySkill::KNOWLEDGE));
 	entry["movement"] = JsonNode(h->movementPointsRemaining());
 	entry["maxMovement"] = JsonNode(h->movementPointsLimit());
+	JsonNode army;
+	for(auto & [slot, stack] : h->stacks)
+	{
+		JsonNode stackEntry;
+		stackEntry["slot"] = JsonNode(slot.getNum());
+		stackEntry["id"] = JsonNode(stack->getId().getNum());
+		stackEntry["count"] = JsonNode(stack->getCount());
+		auto creature = stack->getCreature();
+		if(creature)
+		{
+			stackEntry["name"] = JsonNode(creature->getNameSingularTranslated());
+			stackEntry["level"] = JsonNode(creature->getLevel());
+		}
+		army.Vector().push_back(stackEntry);
+	}
+	entry["army"] = army;
 	return entry;
 }
 
@@ -68,6 +118,13 @@ static JsonNode townToJson(const CGTownInstance * t)
 		built.Vector().push_back(JsonNode(bid.getNum()));
 	entry["built"] = built;
 	return entry;
+}
+
+static mcp::json textContent(const std::string & text)
+{
+	mcp::json arr = mcp::json::array();
+	arr.push_back({{"type", "text"}, {"text", text}});
+	return arr;
 }
 
 static PlayerColor parsePlayerColor(const std::string & name)
@@ -113,12 +170,12 @@ McpServer::McpServer() :
 	});
 
 	srv->register_tool(
-		mcp::tool{ "get_game_state", "Get current game state overview", mcp::json::object(), mcp::json() },
+		mcp::tool{ "get_game_state", "Get current game state overview", {{"type", "object"}}, mcp::json() },
 		[](const mcp::json &, const std::string &) -> mcp::json {
 			std::shared_lock lock(CGameState::mutex);
 
 			if(!GAME->interface() || !GAME->interface()->cb)
-				return mcp::json{{"content", {{{"type", "text"}, {"text", "No active game"}}}}};
+				return textContent("No active game");
 
 			auto & gs = GAME->server().client->gameState();
 			auto cal = gs.getCalendar();
@@ -143,43 +200,43 @@ McpServer::McpServer() :
 
 			result["players"] = players;
 
-			return mcp::json{{"content", {{{"type", "text"}, {"text", result.toCompactString()}}}}};
+			return textContent(result.toCompactString());
 		}
 	);
 
 	srv->register_tool(
-		mcp::tool{ "get_heroes", "List all heroes visible to current player", mcp::json::object(), mcp::json() },
+		mcp::tool{ "get_heroes", "List all heroes visible to current player", {{"type", "object"}}, mcp::json() },
 		[](const mcp::json &, const std::string &) -> mcp::json {
 			std::shared_lock lock(CGameState::mutex);
 
 			auto pi = GAME->interface();
 			if(!pi || !pi->cb)
-				return mcp::json{{"content", {{{"type", "text"}, {"text", "No active game"}}}}};
+				return textContent("No active game");
 
 			auto heroes = pi->cb->getHeroesInfo();
 			JsonNode arr;
 			for(auto * h : heroes)
 				arr.Vector().push_back(heroToJson(h));
 
-			return mcp::json{{"content", {{{"type", "text"}, {"text", arr.toCompactString()}}}}};
+			return textContent(arr.toCompactString());
 		}
 	);
 
 	srv->register_tool(
-		mcp::tool{ "get_towns", "List all towns visible to current player", mcp::json::object(), mcp::json() },
+		mcp::tool{ "get_towns", "List all towns visible to current player", {{"type", "object"}}, mcp::json() },
 		[](const mcp::json &, const std::string &) -> mcp::json {
 			std::shared_lock lock(CGameState::mutex);
 
 			auto pi = GAME->interface();
 			if(!pi || !pi->cb)
-				return mcp::json{{"content", {{{"type", "text"}, {"text", "No active game"}}}}};
+				return textContent("No active game");
 
 			auto towns = pi->cb->getTownsInfo(true);
 			JsonNode arr;
 			for(auto * t : towns)
 				arr.Vector().push_back(townToJson(t));
 
-			return mcp::json{{"content", {{{"type", "text"}, {"text", arr.toCompactString()}}}}};
+			return textContent(arr.toCompactString());
 		}
 	);
 
@@ -199,16 +256,16 @@ McpServer::McpServer() :
 
 			auto pi = GAME->interface();
 			if(!pi || !pi->cb)
-				return mcp::json{{"content", {{{"type", "text"}, {"text", "No active game"}}}}};
+				return textContent("No active game");
 
 			auto playerStr = params["player"].get<std::string>();
 			auto color = parsePlayerColor(playerStr);
 			if(!color.isValidPlayer())
-				return mcp::json{{"isError", true}, {"content", {{{"type", "text"}, {"text", "Invalid player color"}}}}};
+				throw std::runtime_error("Invalid player color");
 
 			auto state = pi->cb->getPlayerState(color, false);
 			if(!state)
-				return mcp::json{{"isError", true}, {"content", {{{"type", "text"}, {"text", "Player not found"}}}}};
+				throw std::runtime_error("Player not found");
 
 			JsonNode result;
 			result["color"] = JsonNode(color.toString());
@@ -221,7 +278,7 @@ McpServer::McpServer() :
 			result["heroes"] = JsonNode(pi->cb->howManyHeroes(false));
 			result["status"] = JsonNode(static_cast<int>(pi->cb->getPlayerStatus(color, false)));
 
-			return mcp::json{{"content", {{{"type", "text"}, {"text", result.toCompactString()}}}}};
+			return textContent(result.toCompactString());
 		}
 	);
 
@@ -245,7 +302,42 @@ McpServer::McpServer() :
 					commandController.processCommand(cmd, false);
 				}
 			});
-			return mcp::json{{"content", {{{"type", "text"}, {"text", "Command queued for execution"}}}}};
+			return textContent("Command queued for execution");
+		}
+	);
+
+	srv->register_tool(
+		mcp::tool{ "list_creatures", "List all creatures with their stats", {{"type", "object"}}, mcp::json() },
+		[](const mcp::json &, const std::string &) -> mcp::json {
+			JsonNode arr;
+			LIBRARY->creatures()->forEach([&](const Creature * creature, bool & stop) {
+				JsonNode entry;
+				entry["id"] = JsonNode(creature->getId().getNum());
+				entry["name"] = JsonNode(creature->getNameSingularTranslated());
+				entry["namePlural"] = JsonNode(creature->getNamePluralTranslated());
+				entry["level"] = JsonNode(creature->getLevel());
+				entry["attack"] = JsonNode(creature->getBaseAttack());
+				entry["defense"] = JsonNode(creature->getBaseDefense());
+				entry["minDamage"] = JsonNode(creature->getBaseDamageMin());
+				entry["maxDamage"] = JsonNode(creature->getBaseDamageMax());
+				entry["hitPoints"] = JsonNode(creature->getBaseHitPoints());
+				entry["speed"] = JsonNode(creature->getBaseSpeed());
+				entry["shots"] = JsonNode(creature->getBaseShots());
+				entry["growth"] = JsonNode(creature->getGrowth());
+				entry["aiValue"] = JsonNode(creature->getAIValue());
+				entry["fightValue"] = JsonNode(creature->getFightValue());
+				entry["doubleWide"] = JsonNode(creature->isDoubleWide());
+				entry["hasUpgrades"] = JsonNode(creature->hasUpgrades());
+				arr.Vector().push_back(entry);
+			});
+			return textContent(arr.toCompactString());
+		}
+	);
+
+	srv->register_tool(
+		mcp::tool{ "get_config", "Get full merged game configuration", {{"type", "object"}}, mcp::json() },
+		[](const mcp::json &, const std::string &) -> mcp::json {
+			return textContent(getFullGameConfig().toCompactString());
 		}
 	);
 
