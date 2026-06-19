@@ -551,5 +551,19 @@ if (ENABLE_DISCORD)
 	target_compile_definitions(vcmiclientcommon PRIVATE ENABLE_DISCORD)
 endif()
 
+if (ENABLE_MCP_SERVER)
+	set(MCP_BUILD_TESTS OFF)
+	add_subdirectory(lib/cpp-mcp)
+	target_include_directories(mcp PUBLIC
+		${CMAKE_CURRENT_SOURCE_DIR}/lib/cpp-mcp/include
+		${CMAKE_CURRENT_SOURCE_DIR}/lib/cpp-mcp/common
+	)
+	if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+		target_compile_options(mcp PRIVATE -Wno-unused-function)
+	endif()
+	target_link_libraries(vcmiclientcommon PRIVATE mcp)
+	target_compile_definitions(vcmiclientcommon PRIVATE ENABLE_MCP_SERVER)
+endif()
+
 vcmi_set_output_dir(vcmiclientcommon "")
 enable_pch(vcmiclientcommon)

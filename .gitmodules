@@ -13,3 +13,6 @@
 	path = client/lib/discord-presence
 	url = https://github.com/vcmi/discord-presence.git
 	branch = vcmi
+[submodule "client/lib/cpp-mcp"]
+	path = client/lib/cpp-mcp
+	url = https://github.com/hkr04/cpp-mcp.git
