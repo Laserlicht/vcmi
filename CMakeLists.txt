@@ -338,6 +338,9 @@ endif()
 if(ENABLE_MMAI)
 	add_definitions(-DENABLE_MMAI)
 endif()
+if(ENABLE_MCP_SERVER)
+	add_definitions(-DENABLE_MCP_SERVER)
+endif()
 
 
 if(IOS)

@@ -220,6 +220,7 @@ set(vcmiclientcommon_SRCS
 	ServerRunner.cpp
 	UIHelper.cpp
 	Discord.cpp
+	McpServer.cpp
 )
 
 set(vcmiclientcommon_HEADERS
@@ -471,6 +472,7 @@ set(vcmiclientcommon_HEADERS
 	resource.h
 	UIHelper.h
 	Discord.h
+	McpServer.h
 )
 
 if(IOS)

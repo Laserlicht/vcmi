@@ -11,6 +11,7 @@
 #include "GameEngine.h"
 #include "GameLibrary.h"
 #include "Discord.h"
+#include "McpServer.h"
 
 #include "gui/CIntObject.h"
 #include "gui/CursorHandler.h"
@@ -74,6 +75,7 @@ GameEngine::GameEngine()
 	framerateManagerInstance = std::make_unique<FramerateManager>(settings["video"]["targetfps"].Integer());
 
 	discordInstance = std::make_unique<Discord>();
+	mcpServerInstance = std::make_unique<McpServer>();
 
 #ifndef ENABLE_VIDEO
 	videoPlayerInstance = std::make_unique<CEmptyVideoPlayer>();

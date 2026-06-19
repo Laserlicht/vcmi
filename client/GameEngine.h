@@ -31,6 +31,7 @@ class IMusicPlayer;
 class CursorHandler;
 class IVideoPlayer;
 class Discord;
+class McpServer;
 
 class GameEngine
 {
@@ -57,6 +58,7 @@ private:
 	std::unique_ptr<AsyncRunner> asyncTasks;
 
 	std::unique_ptr<Discord> discordInstance;
+	std::unique_ptr<McpServer> mcpServerInstance;
 
 	IGameEngineUser *engineUser = nullptr;
 
@@ -84,6 +86,7 @@ public:
 	CursorHandler & cursor() { return *cursorHandlerInstance; }
 	IVideoPlayer & video() { return *videoPlayerInstance; }
 	Discord & discord() { return *discordInstance; }
+	McpServer & mcpServer() { return *mcpServerInstance; }
 
 	/// Returns current logical screen dimensions
 	/// May not match size of window if user has UI scaling different from 100%

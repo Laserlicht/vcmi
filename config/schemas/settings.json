@@ -3,7 +3,7 @@
 {
 	"type" : "object",
 	"$schema" : "http://json-schema.org/draft-04/schema",
-	"required" : [ "general", "video", "adventure", "battle", "input", "server", "logging", "launcher", "lobby", "gameTweaks", "mods", "ai" ],
+	"required" : [ "general", "video", "adventure", "battle", "input", "server", "logging", "launcher", "lobby", "gameTweaks", "mods", "ai", "mcp" ],
 	"definitions" : {
 		"logLevelEnum" : {
 			"type" : "string",
@@ -873,6 +873,30 @@
 				"skipAdventureMapAnimations": {
 					"type": "boolean",
 					"default": false
+				}
+			}
+		},
+		"mcp" : {
+			"type" : "object",
+			"additionalProperties" : false,
+			"default" : {},
+			"required" : [
+				"enabled",
+				"host",
+				"port"
+			],
+			"properties" : {
+				"enabled" : {
+					"type" : "boolean",
+					"default" : true
+				},
+				"host" : {
+					"type" : "string",
+					"default" : "localhost"
+				},
+				"port" : {
+					"type" : "number",
+					"default" : 9100
 				}
 			}
 		}
