@@ -221,6 +221,9 @@ set(vcmiclientcommon_SRCS
 	UIHelper.cpp
 	Discord.cpp
 	McpServer.cpp
+	mcp/InfoTools.cpp
+	mcp/ActionTools.cpp
+	mcp/Helpers.cpp
 )
 
 set(vcmiclientcommon_HEADERS
@@ -473,6 +476,9 @@ set(vcmiclientcommon_HEADERS
 	UIHelper.h
 	Discord.h
 	McpServer.h
+	mcp/InfoTools.h
+	mcp/ActionTools.h
+	mcp/Helpers.h
 )
 
 if(IOS)
