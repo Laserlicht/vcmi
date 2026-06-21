@@ -835,6 +835,11 @@ if(IOS)
 	target_link_libraries(vcmiMain PUBLIC iOS_utils)
 endif()
 
+if(SWITCH)
+	# Link-time stubs for libnx-missing networking helpers used by boost::asio.
+	target_sources(vcmiMain PRIVATE "${CMAKE_SOURCE_DIR}/switch/compat/switch_net_stubs.c")
+endif()
+
 target_include_directories(vcmiMain
 	PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
 	PUBLIC ${CMAKE_SOURCE_DIR}

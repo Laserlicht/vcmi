@@ -230,6 +230,11 @@ ScreenHandler::ScreenHandler()
 		SDL_SetHint(SDL_HINT_AUDIO_CATEGORY, "AVAudioSessionCategoryAmbient");
 #endif
 
+#ifdef VCMI_SWITCH
+	// Bind face buttons by Nintendo position: A (right) = accept, B (bottom) = cancel.
+	SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "0");
+#endif
+
 	if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER))
 	{
 		logGlobal->error("Something was wrong: %s", SDL_GetError());
@@ -488,6 +493,12 @@ SDL_Window * ScreenHandler::createWindow()
 
 #ifdef VCMI_ANDROID
 	return createWindowImpl(Point(), SDL_WINDOW_RESIZABLE, false);
+#endif
+
+#ifdef VCMI_SWITCH
+	// Switch always renders fullscreen at the native resolution (720p handheld / 1080p
+	// docked). Required: without a return here createWindow() falls through (UB).
+	return createWindowImpl(getPreferredWindowResolution(), 0, false);
 #endif
 }
 

@@ -142,6 +142,8 @@ std::unordered_map<ResourcePath, boost::filesystem::path> CFilesystemLoader::lis
 	boost::filesystem::recursive_directory_iterator it(baseDirectory, boost::filesystem::symlink_option::recurse);
 #endif
 
+	try
+	{
 	for(; it != enddir; ++it)
 	{
 		EResType type;
@@ -202,6 +204,17 @@ std::unordered_map<ResourcePath, boost::filesystem::path> CFilesystemLoader::lis
 			fileList[ResourcePath(resName, type)] = std::move(filename);
 		}
 	}
+	}
+	catch (const boost::filesystem::filesystem_error & e)
+	{
+#ifdef VCMI_SWITCH
+		// libnx FAT returns EIO when stat-ing a file open for writing; keep what we
+		// gathered and continue instead of aborting the whole data source.
+		logGlobal->warn("Filesystem scan of '%s' stopped early: %s", baseDirectory.string(), e.what());
+#else
+		throw;
+#endif
+	}
 
 	return fileList;
 }
@@ -209,8 +222,14 @@ std::unordered_map<ResourcePath, boost::filesystem::path> CFilesystemLoader::lis
 std::string CFilesystemLoader::getFullFileURI(const ResourcePath& resourceName) const
 {
 	auto filePath = getResourceName(resourceName);
+#ifdef VCMI_SWITCH
+	// canonical() fails (EINVAL) on libnx device paths (sdmc:/, romfs:/); FAT has no
+	// symlinks so the path is already canonical.
+	return TextOperations::filesystemPathToUtf8(*filePath);
+#else
 	auto path = boost::filesystem::canonical(*filePath);
 	return TextOperations::filesystemPathToUtf8(path);
+#endif
 }
 
 std::time_t CFilesystemLoader::getLastWriteTime(const ResourcePath& resourceName) const

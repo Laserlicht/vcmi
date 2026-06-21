@@ -118,12 +118,37 @@ elseif(ANDROID)
 		COMMENT "Create android package"
 	)
 	add_dependencies(android_deploy vcmiclient)
+elseif(SWITCH)
+	# Package the Switch homebrew NRO. The bundled engine data (config, the built-in
+	# VCMI mod and scripts) is staged into a romfs directory, NACP metadata is generated
+	# and elf2nro produces vcmiclient.nro next to the linked .elf.
+	# (The player's Heroes III data lives on the SD card at sdmc:/switch/vcmi, not in romfs.)
+	set(switchRomfsDir "${CMAKE_BINARY_DIR}/romfs")
+	set(switchNacp "${CMAKE_BINARY_DIR}/vcmiclient.nacp")
+	if(EXISTS "${CMAKE_SOURCE_DIR}/switch/icon.jpg")
+		set(switchIcon "${CMAKE_SOURCE_DIR}/switch/icon.jpg")
+	else()
+		set(switchIcon "${NX_DEFAULT_ICON}")
+	endif()
+
+	add_custom_command(TARGET vcmiclient POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E rm -rf "${switchRomfsDir}"
+		COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/config" "${switchRomfsDir}/config"
+		COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/Mods"   "${switchRomfsDir}/Mods"
+		COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/scripts" "${switchRomfsDir}/scripts"
+		COMMAND ${NX_NACPTOOL_EXE} --create "VCMI" "VCMI Team, naga" "${VCMI_VERSION_STRING}" "${switchNacp}"
+		COMMAND ${NX_ELF2NRO_EXE} "$<TARGET_FILE:vcmiclient>" "$<TARGET_FILE_DIR:vcmiclient>/vcmiclient.nro"
+			"--icon=${switchIcon}" "--nacp=${switchNacp}" "--romfsdir=${switchRomfsDir}"
+		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+		COMMENT "Creating vcmiclient.nro (NACP + romfs + elf2nro)"
+		VERBATIM
+	)
 else()
 	install(TARGETS vcmiclient DESTINATION ${BIN_DIR})
 endif()
 
 #install icons and desktop file on Linux
-if(NOT WIN32 AND NOT APPLE AND NOT ANDROID)
+if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND NOT SWITCH)
 	foreach(iconSize 16 22 32 48 64 128 256 512 1024 2048)
 		install(FILES "icons/vcmiclient.${iconSize}x${iconSize}.png"
 			DESTINATION "share/icons/hicolor/${iconSize}x${iconSize}/apps"

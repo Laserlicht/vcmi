@@ -35,6 +35,27 @@
             "generator": "Ninja"
         },
         {
+            "name": "switch-release",
+            "displayName": "Nintendo Switch (devkitA64 + libnx)",
+            "inherits": "release-binary-dir",
+            "generator": "Ninja",
+            "toolchainFile": "${sourceDir}/cmake_modules/Toolchain_switch.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/switch-release",
+                "ENABLE_CLIENT": "ON",
+                "ENABLE_SERVER": "OFF",
+                "ENABLE_LAUNCHER": "OFF",
+                "ENABLE_EDITOR": "OFF",
+                "ENABLE_TEST": "OFF",
+                "ENABLE_LOBBY": "OFF",
+                "ENABLE_VIDEO": "ON",
+                "ENABLE_MMAI": "OFF",
+                "ENABLE_INNOEXTRACT": "OFF",
+                "ENABLE_TRANSLATIONS": "OFF"
+            }
+        },
+        {
             "name" : "linux-release",
             "inherits" : "default-release",
             "hidden": true,

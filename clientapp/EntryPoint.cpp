@@ -55,6 +55,10 @@
 #include <SDL_system.h>
 #endif
 
+#ifdef VCMI_SWITCH
+#include <switch.h>
+#endif
+
 #if __MINGW32__
 #undef main
 #endif
@@ -118,9 +122,20 @@ static void prog_help(const po::options_description &opts)
 	std::cout << opts;
 }
 
+#ifdef VCMI_SWITCH
+// Boost the CPU clock during the CPU-bound startup loading, restored once the main menu
+// is active. No-op unless the NRO runs in application (title-takeover) mode.
+static void switchSetCpuBoost(bool enable)
+{
+	appletSetCpuBoostMode(enable ? ApmCpuBoostMode_FastLoad : ApmCpuBoostMode_Normal);
+}
+#endif
+
 #if defined(VCMI_WINDOWS) && !defined(__GNUC__) && defined(VCMI_WITH_DEBUG_CONSOLE)
 int wmain(int argc, wchar_t* argv[])
-#elif defined(VCMI_MOBILE)
+// On Switch, SDL2 does not redefine main()->SDL_main (SDL_main.h has no __SWITCH__
+// case), and libSDL2main.a is empty, so libnx's crt0 calls our main() directly.
+#elif defined(VCMI_MOBILE) && !defined(VCMI_SWITCH)
 int SDL_main(int argc, char *argv[])
 #else
 int main(int argc, char * argv[])
@@ -130,6 +145,15 @@ int main(int argc, char * argv[])
 	CAndroidVMHelper::initClassloader(SDL_AndroidGetJNIEnv());
 	// boost will crash without this
 	setenv("LANG", "C", 1);
+#endif
+
+#ifdef VCMI_SWITCH
+	// libnx init before any filesystem/network access: romfs:/ holds the bundled data,
+	// sockets are needed for multiplayer. Return codes ignored (safe to call twice).
+	romfsInit();
+	socketInitializeDefault();
+	setenv("LANG", "C", 1); // boost on newlib needs a sane locale, as on Android
+	switchSetCpuBoost(true); // restored at makeActiveInterface below
 #endif
 
 #if !defined(VCMI_MOBILE)
@@ -205,7 +229,7 @@ int main(int argc, char * argv[])
 	if(vm.count("logLocation"))
 		logPath = vm["logLocation"].as<std::string>() + "/VCMI_Client_log.txt";
 
-#ifndef VCMI_IOS
+#if !defined(VCMI_IOS) && !defined(VCMI_SWITCH)
 
 	auto callbackFunction = [](std::string buffer, bool calledFromIngameConsole)
 	{
@@ -218,6 +242,7 @@ int main(int argc, char * argv[])
 
 	CBasicLogConfigurator logConfigurator(logPath, &console);
 #else
+	// No interactive stdin console on iOS / Nintendo Switch
 	CBasicLogConfigurator logConfigurator(logPath, nullptr);
 #endif
 
@@ -371,6 +396,10 @@ int main(int argc, char * argv[])
 	else if (!settings["session"]["headless"].Bool())
 	{
 		GAME->mainmenu()->makeActiveInterface();
+
+#ifdef VCMI_SWITCH
+		switchSetCpuBoost(false); // loading done, main menu active - back to normal clocks
+#endif
 
 		bool playIntroVideo = !vm.count("battle") && !vm.count("nointro") && settings["video"]["showIntro"].Bool();
 		if(playIntroVideo)

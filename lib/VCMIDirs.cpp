@@ -398,6 +398,39 @@ void VCMIDirsAndroid::init()
 	IVCMIDirsUNIX::init();
 }
 
+#elif defined(VCMI_SWITCH)
+class VCMIDirsSwitch final : public IVCMIDirsUNIX
+{
+public:
+	bfs::path userDataPath() const override;
+	bfs::path userCachePath() const override;
+	bfs::path userConfigPath() const override;
+
+	std::vector<bfs::path> dataPaths() const override;
+
+	bfs::path binaryPath() const override;
+};
+
+// Writable storage is on the SD card ("sdmc:"); bundled data ships in the read-only
+// NRO romfs ("romfs:"). The cache/log must stay OUT of userDataPath(): that dir is
+// scanned recursively at startup and libnx's FAT returns EIO when stat-ing the live
+// log file, which would abort the scan. Keep it in an unscanned sibling directory.
+bfs::path VCMIDirsSwitch::userDataPath() const { return "sdmc:/switch/vcmi"; }
+bfs::path VCMIDirsSwitch::userCachePath() const { return "sdmc:/switch/vcmi-cache"; }
+bfs::path VCMIDirsSwitch::userConfigPath() const { return userDataPath() / "config"; }
+
+std::vector<bfs::path> VCMIDirsSwitch::dataPaths() const
+{
+	// Order matters: later entries have higher priority in VCMI's virtual filesystem,
+	// so user-provided content on the SD card overrides the bundled romfs data.
+	return {
+		binaryPath(),   // romfs:/ - bundled config, Mods/VCMI, scripts (read-only)
+		userDataPath(), // sdmc:/switch/vcmi - user's Heroes III data, extra mods, saves
+	};
+}
+
+bfs::path VCMIDirsSwitch::binaryPath() const { return "romfs:/"; }
+
 #elif defined(VCMI_PORTMASTER)
 class VCMIDirsPM : public IVCMIDirsUNIX
 {
@@ -575,6 +608,8 @@ namespace VCMIDirs
 			static VCMIDirsWIN32 singleton;
 		#elif defined(VCMI_ANDROID)
 			static VCMIDirsAndroid singleton;
+		#elif defined(VCMI_SWITCH)
+			static VCMIDirsSwitch singleton;
 		#elif defined(VCMI_PORTMASTER)
 			static VCMIDirsPM singleton;
 		#elif defined(VCMI_XDG)

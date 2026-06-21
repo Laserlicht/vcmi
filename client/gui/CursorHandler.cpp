@@ -25,6 +25,12 @@
 
 std::unique_ptr<ICursor> CursorHandler::createCursor()
 {
+#ifdef VCMI_SWITCH
+	// Switch has no OS/hardware cursor; the controller and touchscreen drive an
+	// on-screen software cursor that the engine draws itself.
+	return std::make_unique<CursorSoftware>();
+#endif
+
 #if defined(VCMI_MOBILE) || defined(VCMI_PORTMASTER)
 	if (settings["general"]["userRelativePointer"].Bool())
 		return std::make_unique<CursorSoftware>();

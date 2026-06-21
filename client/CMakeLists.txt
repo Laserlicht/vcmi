@@ -517,11 +517,40 @@ target_link_libraries(vcmiclientcommon PUBLIC
 		vcmi SDL2::SDL2 SDL2::Image SDL2::Mixer SDL2::TTF libsquish::libsquish
 )
 
+if(SWITCH)
+	# VCMI's FindSDL2* modules only attach the bare libSDL2*.a archives. On Switch
+	# everything is static, so the full transitive dependency closure (GL/EGL backend,
+	# image/audio/font codecs) must be linked too. We resolve each to its full path via
+	# find_library - passing them as -l flags lets CMake's link de-duplication drop the
+	# codec archives that only a single SDL2 add-on references (jpeg/webp/ogg/...).
+	# --start-group resolves the circular references (e.g. harfbuzz <-> freetype).
+	set(switchStaticDeps "")
+	foreach(_dep jpeg webp png16 z vorbisidec modplug mpg123 opusfile ogg opus freetype harfbuzz bz2 EGL glapi drm_nouveau)
+		find_library(SWITCH_DEP_${_dep} NAMES ${_dep} REQUIRED)
+		list(APPEND switchStaticDeps "${SWITCH_DEP_${_dep}}")
+	endforeach()
+	target_link_libraries(vcmiclientcommon PUBLIC
+		-Wl,--start-group ${switchStaticDeps} -Wl,--end-group)
+endif()
+
 if(ENABLE_VIDEO)
 	target_compile_definitions(vcmiclientcommon PRIVATE ENABLE_VIDEO)
-	target_link_libraries(vcmiclientcommon PRIVATE
-		${ffmpeg_LIBRARIES}
-	)
+	if(SWITCH)
+		# ffmpeg is static on Switch: it has circular references between its components
+		# and pulls extra codec dependencies (dav1d, bz2, z). Wrap the whole set in
+		# --start-group so the linker resolves them.
+		set(switchVideoDeps "")
+		foreach(_dep dav1d bz2 z)
+			find_library(SWITCH_VIDEO_DEP_${_dep} NAMES ${_dep} REQUIRED)
+			list(APPEND switchVideoDeps "${SWITCH_VIDEO_DEP_${_dep}}")
+		endforeach()
+		target_link_libraries(vcmiclientcommon PRIVATE
+			-Wl,--start-group ${ffmpeg_LIBRARIES} ${switchVideoDeps} -Wl,--end-group)
+	else()
+		target_link_libraries(vcmiclientcommon PRIVATE
+			${ffmpeg_LIBRARIES}
+		)
+	endif()
 endif()
 
 target_include_directories(vcmiclientcommon PUBLIC

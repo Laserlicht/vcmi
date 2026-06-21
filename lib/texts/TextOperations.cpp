@@ -25,7 +25,13 @@ FromString convertTextEncoding(const DestString & fromString, const std::string 
 	constexpr auto fromCharSize = sizeof(typename DestString::value_type);
 	constexpr auto destCharSize = sizeof(typename FromString::value_type);
 
+#ifdef VCMI_SWITCH
+	// libiconv rejects undefined codepoints in H3's single-byte codepages and fails the
+	// whole string; transliterate what it can and drop the rest.
+	iconv_t cd = iconv_open((destEncoding + "//TRANSLIT//IGNORE").c_str(), fromEncoding.c_str());
+#else
 	iconv_t cd = iconv_open(destEncoding.c_str(), fromEncoding.c_str());
+#endif
 	if(cd == reinterpret_cast<iconv_t>(-1))
 	{
 		logGlobal->error("Encoding coversion failure. Invalid encoding %s -> %s", fromEncoding, destEncoding);

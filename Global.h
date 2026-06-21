@@ -31,6 +31,9 @@ static_assert(sizeof(bool) == 1, "Bool needs to be 1 byte in size.");
 #  define VCMI_WINDOWS_32
 #elif defined(_WIN32_WCE)
 #  error "Windows CE isn't supported"
+#elif defined(__SWITCH__)	// Nintendo Switch homebrew (devkitA64 + libnx, newlib).
+#  define VCMI_UNIX			// newlib provides a POSIX-ish layer, but it is NOT Linux and has no XDG dirs
+#  define VCMI_SWITCH
 #elif defined(__linux__) || defined(__gnu_linux__) || defined(linux) || defined(__linux)
 #  define VCMI_UNIX
 #  define VCMI_XDG
@@ -71,7 +74,7 @@ static_assert(sizeof(bool) == 1, "Bool needs to be 1 byte in size.");
 #  error "This platform isn't supported"
 #endif
 
-#if defined(VCMI_ANDROID) || defined(VCMI_IOS)
+#if defined(VCMI_ANDROID) || defined(VCMI_IOS) || defined(VCMI_SWITCH)
 #define VCMI_MOBILE
 #endif
 

@@ -23,6 +23,35 @@
 #include "../../lib/texts/TextOperations.h"
 
 
+#ifdef VCMI_SWITCH
+#include <switch.h>
+
+namespace
+{
+/// Shows the Switch system software keyboard seeded with the current text and returns
+/// the edited string, or nullopt if it could not be shown (caller falls back to SDL).
+std::optional<std::string> showSwitchSoftwareKeyboard(const std::string & initialText)
+{
+	SwkbdConfig kbd;
+	if(R_FAILED(swkbdCreate(&kbd, 0)))
+		return std::nullopt;
+
+	swkbdConfigMakePresetDefault(&kbd);
+	swkbdConfigSetStringLenMax(&kbd, 500); // default preset caps at 16 chars - far too short
+	if(!initialText.empty())
+		swkbdConfigSetInitialText(&kbd, initialText.c_str());
+
+	char buffer[512] = {};
+	const Result rc = swkbdShow(&kbd, buffer, sizeof(buffer));
+	swkbdClose(&kbd);
+
+	if(R_FAILED(rc))
+		return std::nullopt;
+	return std::string(buffer);
+}
+}
+#endif
+
 std::list<CFocusable *> CFocusable::focusables;
 CFocusable * CFocusable::inputWithFocus;
 
@@ -217,6 +246,20 @@ void CTextInput::showPopupWindow(const Point & cursorPosition)
 
 void CTextInput::clickPressed(const Point & cursorPosition)
 {
+#ifdef VCMI_SWITCH
+	// Prefer the native Switch keyboard; fall back to SDL's inline one (giveFocus) below.
+	if(auto edited = showSwitchSoftwareKeyboard(currentText))
+	{
+		const std::string oldText = currentText;
+		currentText = *edited;
+		if(onTextFiltering)
+			onTextFiltering(currentText, oldText);
+		updateLabel();
+		if(onTextEdited)
+			onTextEdited(currentText);
+		return;
+	}
+#endif
 	// attempt to give focus unconditionally, even if we already have it
 	// this forces on-screen keyboard to show up again, even if player have closed it before
 	giveFocus();

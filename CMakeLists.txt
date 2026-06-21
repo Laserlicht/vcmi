@@ -16,6 +16,21 @@ if(APPLE AND NOT IOS)
 	set(MACOS 1)
 endif()
 
+# Nintendo Switch: the devkitPro toolchain sets CMAKE_SYSTEM_NAME to NintendoSwitch.
+# Expose a SWITCH variable for the platform branches below (Toolchain_switch.cmake
+# also sets it explicitly). Switch is treated as a mobile-class target throughout.
+if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch" OR CMAKE_SYSTEM_NAME STREQUAL "Horizon")
+	set(SWITCH 1)
+endif()
+
+if(SWITCH)
+	# Provide newlib/libnx compatibility shims (sys/uio.h, sys/un.h, missing errno
+	# values, asio tweaks) to every target. The compat header is force-included so
+	# its defines land before any dependency header (e.g. boost::asio) is parsed.
+	include_directories(BEFORE "${CMAKE_SOURCE_DIR}/switch/compat")
+	add_compile_options("-include" "${CMAKE_SOURCE_DIR}/switch/compat/switch_compat.h")
+endif()
+
 # Use Visual Studio's latest debugger information format settings.
 if(POLICY CMP0142)
 	cmake_policy(SET CMP0142 NEW)
@@ -74,6 +89,10 @@ if(ANDROID)
 
 	set(ENABLE_STATIC_LIBS ON)
 	set(ENABLE_LAUNCHER ON)
+elseif(SWITCH)
+	# Single static NRO, no Qt launcher/editor.
+	set(ENABLE_STATIC_LIBS ON)
+	set(ENABLE_LAUNCHER OFF)
 else()
 	if(IOS)
 		set(ENABLE_STATIC_LIBS ON)
@@ -95,16 +114,32 @@ endif()
 
 include(CMakeDependentOption)
 
-if(IOS OR ANDROID)
+if(IOS OR ANDROID OR SWITCH)
 	set(ENABLE_MONOLITHIC_INSTALL OFF)
 	set(ENABLE_SINGLE_APP_BUILD ON)
-	option(ENABLE_EDITOR "Enable compilation of map editor" ON)
-	cmake_dependent_option(ENABLE_TEMPLATE_EDITOR "Enable template editor inside map editor" ON "ENABLE_EDITOR" OFF)
+	if(SWITCH)
+		# No Qt on Switch, so no map editor / template editor.
+		set(ENABLE_EDITOR OFF)
+		set(ENABLE_TEMPLATE_EDITOR OFF)
+	else()
+		option(ENABLE_EDITOR "Enable compilation of map editor" ON)
+		cmake_dependent_option(ENABLE_TEMPLATE_EDITOR "Enable template editor inside map editor" ON "ENABLE_EDITOR" OFF)
+	endif()
 	set(ENABLE_TEST OFF)
 	set(ENABLE_LOBBY OFF)
 	set(ENABLE_SERVER OFF)
 	set(COPY_CONFIG_ON_BUILD OFF)
 	set(ENABLE_DISCORD OFF)
+
+	if(SWITCH)
+		# Switch profile: disable the bits that are unavailable on the platform.
+		#  - ENABLE_MMAI OFF: the ML battle AI needs onnxruntime, which has no Switch build.
+		#  - ENABLE_INNOEXTRACT OFF: GOG installer extraction is a launcher-only feature.
+		# ENABLE_VIDEO is left at its default (ON): ffmpeg is provided by portlibs and its
+		# static dependency chain (dav1d/bz2/z) is linked explicitly in client/CMakeLists.txt.
+		set(ENABLE_MMAI OFF CACHE BOOL "" FORCE)
+		set(ENABLE_INNOEXTRACT OFF CACHE BOOL "" FORCE)
+	endif()
 else()
 	option(ENABLE_MONOLITHIC_INSTALL "Install everything in single directory on Linux and Mac" OFF) # Used for Snap packages and also useful for debugging
 	option(COPY_CONFIG_ON_BUILD "Copies config folder into output directory at building phase" ON)
@@ -602,7 +637,18 @@ if(ENABLE_LAUNCHER OR ENABLE_EDITOR)
 endif()
 
 if(NOT ENABLE_MINIMAL_LIB)
-	find_package(TBB REQUIRED)
+	if(SWITCH)
+		# Real Intel oneTBB is unavailable on Nintendo Switch. Use the bundled
+		# header-only sequential shim that implements the subset of the TBB API
+		# VCMI uses (parallel_for/reduce, blocked_range, task_arena/group,
+		# global_control and the concurrent containers) - everything runs
+		# single-threaded. See switch/tbb-shim/.
+		add_library(TBB::tbb INTERFACE IMPORTED)
+		set_target_properties(TBB::tbb PROPERTIES
+			INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/switch/tbb-shim/include")
+	else()
+		find_package(TBB REQUIRED)
+	endif()
 	find_package(luajit)
 
 	if(TARGET luajit::luajit)
@@ -663,6 +709,14 @@ elseif(ANDROID)
 	set(androidPackageSourceDir "${CMAKE_SOURCE_DIR}/android")
 	set(androidQtBuildDir "${CMAKE_BINARY_DIR}/android-build")
 	set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${androidQtBuildDir}/${LIB_DIR}")
+elseif(SWITCH)
+	# On Switch the "install tree" becomes the NRO's romfs. Everything goes flat
+	# into the romfs staging directory (CMAKE_INSTALL_PREFIX), so that config/,
+	# Mods/ and scripts/ are reachable as romfs:/config, romfs:/Mods, romfs:/scripts
+	# at runtime (see VCMIDirsSwitch).
+	set(BIN_DIR "." CACHE STRING "Where to install binaries")
+	set(LIB_DIR "." CACHE STRING "Where to install main library")
+	set(DATA_DIR "." CACHE STRING "Where to install data files")
 else()
 	# includes lib path which determines where to install shared libraries (either /lib or /lib64)
 	include(GNUInstallDirs)
