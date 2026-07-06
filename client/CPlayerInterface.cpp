@@ -270,8 +270,15 @@ void CPlayerInterface::performAutosave()
 
 					bool charForbidden = forbiddenChars.find(c) != std::string::npos;
 					bool charNonprintable = static_cast<unsigned char>(c) < static_cast<unsigned char>(' ');
-
+#ifdef VCMI_SWITCH
+					// The SD card's FAT layer crashes on some non-ASCII filename bytes, so
+					// keep Switch save names ASCII-only (a CJK map name would otherwise be
+					// written as a directory and take the console down).
+					bool charNonAscii = static_cast<unsigned char>(c) >= 0x80;
+					return charForbidden || charNonprintable || charNonAscii;
+#else
 					return charForbidden || charNonprintable;
+#endif
 				};
 				std::replace_if(name.begin(), name.end(), isSymbolIllegal, '_' );
 
