@@ -223,7 +223,13 @@ set(vcmiclientcommon_SRCS
 	McpServer.cpp
 	mcp/InfoTools.cpp
 	mcp/ActionTools.cpp
-	mcp/Helpers.cpp
+	mcp/QueryTools.cpp
+	mcp/Serializers.cpp
+	mcp/ToolContext.cpp
+	mcp/EventJournal.cpp
+	mcp/RequestTracker.cpp
+	mcp/QueryRegistry.cpp
+	mcp/JournalVisitor.cpp
 )
 
 set(vcmiclientcommon_HEADERS
@@ -478,7 +484,13 @@ set(vcmiclientcommon_HEADERS
 	McpServer.h
 	mcp/InfoTools.h
 	mcp/ActionTools.h
-	mcp/Helpers.h
+	mcp/QueryTools.h
+	mcp/Serializers.h
+	mcp/ToolContext.h
+	mcp/EventJournal.h
+	mcp/RequestTracker.h
+	mcp/QueryRegistry.h
+	mcp/JournalVisitor.h
 )
 
 if(IOS)

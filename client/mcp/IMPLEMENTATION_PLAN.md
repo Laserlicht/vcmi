@@ -1,6 +1,13 @@
 # VCMI Full MCP Support — Implementation Plan
 
-Status: **Draft / planning document** — written 2026-07-13, based on branch `mcp` (HEAD `53e2376a1`).
+Status: written 2026-07-13, based on branch `mcp` (HEAD `53e2376a1`). **Phases 0 and 1 implemented
+2026-07-14** (ToolContext/Serializers refactor; EventJournal/RequestTracker/QueryRegistry/
+JournalVisitor; the `handlePack` hook; `get_events`/`wait_for_event`/`get_pending_queries`/
+`answer_query`; existing 6 action tools retrofitted with the wait+envelope). Verified: full
+project builds and links with `ENABLE_MCP_SERVER=ON`; a live session (headless VCMI under Xvfb)
+confirmed the MCP HTTP server starts and answers real JSON-RPC requests. Phases 2-6 (read
+completeness, remaining adventure actions, battle, polish, lobby) are still open - see the
+phase table below.
 
 Goal: an LLM connected via MCP can **fully control the game and read all information a human
 player of this client could see** — adventure map, towns, heroes, armies, artifacts, trade,
@@ -479,26 +486,24 @@ Conventions:
 ## 10. File layout & code-quality rules
 
 ```
+client/McpServer.{h,cpp}     (lifecycle: owns journal/tracker/registry/visitor, registration, onPackApplied hook)
 client/mcp/
   IMPLEMENTATION_PLAN.md      (this file)
-  McpServer.{h,cpp}           (move from client/; lifecycle + registration only)
-  ToolContext.{h,cpp}         (player resolution, locking, envelopes, param parsing)
-  ToolSchema.{h,cpp}          (tiny builders: obj({req("heroId", integer("...")), opt(...)}))
-  Serializers.{h,cpp}         (section 8; absorbs Helpers.{h,cpp})
-  EventJournal.{h,cpp}        (ring buffer + seq + wait support)
-  JournalVisitor.{h,cpp}      (ICPackVisitor → journal/QRY/REQ dispatch)
-  QueryRegistry.{h,cpp}
-  RequestTracker.{h,cpp}
-  tools/InfoTools.cpp         (split current InfoTools by domain as it grows)
-  tools/AdventureTools.cpp
-  tools/ArmyTools.cpp
-  tools/ArtifactTools.cpp
-  tools/TownTools.cpp
-  tools/TradeTools.cpp
-  tools/BattleTools.cpp
-  tools/QueryTools.cpp
-  tools/MetaTools.cpp
+  ToolContext.{h,cpp}         (player resolution, locking, action envelope + wait)          [done]
+  Serializers.{h,cpp}         (section 8; absorbed Helpers.{h,cpp})                          [done]
+  EventJournal.{h,cpp}        (ring buffer + seq + wait support)                             [done]
+  JournalVisitor.{h,cpp}      (ICPackVisitor → journal/QRY/REQ dispatch)                      [done]
+  QueryRegistry.{h,cpp}                                                                      [done]
+  RequestTracker.{h,cpp}                                                                      [done]
+  InfoTools.cpp               (read tools; split into tools/ by domain as it grows)          [done, phase 1 subset]
+  ActionTools.cpp             (existing 6 actions, retrofitted)                              [done]
+  QueryTools.cpp              (get_events/wait_for_event/get_pending_queries/answer_query)    [done]
+  tools/AdventureTools.cpp    (phase 3: remaining hero/army/artifact/town/trade actions)
+  tools/BattleTools.cpp       (phase 4)
 ```
+
+`mcp::tool_builder` (already vendored in cpp-mcp, `mcp_tool.h`) is used for all tool schemas
+instead of a bespoke `ToolSchema` layer - no need to reinvent it.
 
 Dedup rules (fixing current debt):
 - `textContent()` defined **once** (ToolContext), not per file.
@@ -513,11 +518,12 @@ Dedup rules (fixing current debt):
   never hand-rolled maps.
 
 Changes **outside** `client/mcp/` (kept minimal, the full list):
-1. `client/Client.cpp` — one hook line in `handlePack` (`onPackApplied`).
-2. `client/CMakeLists.txt` — new source files; move of `McpServer.*` into `client/mcp/`.
-3. `client/GameEngine.{h,cpp}` — already integrated (no further change expected).
-4. `config/schemas/settings.json` — new optional keys under `mcp` (section 11).
-5. (Phase 5, optional) `client/CPlayerInterface.cpp` — dismissal of GUI dialog when its query
+1. `client/Client.cpp` — one hook line in `handlePack` (`ENGINE->mcpServer().onPackApplied(pack)`).
+2. `client/CMakeLists.txt` — new source files under `client/mcp/`.
+3. `client/GameEngine.{h,cpp}` — already integrated, untouched further.
+4. `client/McpServer.{h,cpp}` — stayed in `client/` (not moved); grew to own the journal/tracker/registry/visitor and expose `onPackApplied`.
+5. `config/schemas/settings.json` — new optional keys under `mcp` (section 11).
+6. (Phase 5, optional) `client/CPlayerInterface.cpp` — dismissal of GUI dialog when its query
    was answered via MCP.
 
 ## 11. Configuration
@@ -562,8 +568,8 @@ manually or via `--donotstartserver`/CLI options.
 
 | Phase | Content | Outcome |
 |---|---|---|
-| **0. Refactor** | Move `McpServer.*` to `client/mcp/`; introduce `ToolContext`, `ToolSchema`, `Serializers` (absorb Helpers); port the 20 existing tools; delete duplicated boilerplate | identical behavior, clean base |
-| **1. Feedback core** | `handlePack` hook, `EventJournal` + `JournalVisitor`, `RequestTracker`, `QueryRegistry`; tools `get_events`, `wait_for_event`, `get_pending_queries`, `answer_query`; action envelope with wait; retrofit existing 6 actions | LLM sees consequences & can answer dialogs — playable core loop (move, fight via auto-combat?, no: battles still GUI) |
+| **0. Refactor** ✅ | Introduce `ToolContext`, `Serializers` (absorb Helpers); port the 20 existing tools onto `mcp::tool_builder` + `ToolContext::readTool`; delete duplicated boilerplate | identical behavior, clean base |
+| **1. Feedback core** ✅ | `handlePack` hook, `EventJournal` + `JournalVisitor`, `RequestTracker`, `QueryRegistry`; tools `get_events`, `wait_for_event`, `get_pending_queries`, `answer_query`; action envelope with wait; retrofit existing 6 actions | LLM sees consequences & can answer dialogs — action tools now return `{status, events, pendingQueries}` instead of "queued for execution" |
 | **2. Read completeness** | Serializers for tiles/objects/paths/markets/quests/tavern/buildings + tools `get_tiles`, `get_object_details`, `get_hero_path`, `get_market_info`, `get_tavern_heroes`, `get_quests`, `list_buildings`, `list_hero_types`; static data as resources | LLM can plan like a human player |
 | **3. Action completeness (adventure)** | All remaining PacksForServer tools of section 5 (army, artifacts, town, trade, spells, misc) | full adventure-map control |
 | **4. Battle** | `get_battle_state` extension (reachability, damage estimates, turn queue), `battle_*` tools, battle wait loop, `BattleResult` query handling | full battle control |

@@ -17,25 +17,26 @@
 
 #include "../lib/CConfigHandler.h"
 #include "../lib/GameConstants.h"
-#include "../lib/json/JsonNode.h"
-#include "../lib/gameState/CGameState.h"
-#include "../lib/CPlayerState.h"
-#include "../lib/mapping/CMap.h"
-#include "../lib/callback/CCallback.h"
-#include "../lib/StartInfo.h"
+#include "../lib/networkPacks/NetPacksBase.h"
 
-#include "GameInstance.h"
-#include "GameEngine.h"
-#include "CServerHandler.h"
-#include "Client.h"
-#include "CPlayerInterface.h"
+#include "mcp/EventJournal.h"
+#include "mcp/RequestTracker.h"
+#include "mcp/QueryRegistry.h"
+#include "mcp/JournalVisitor.h"
 
 #include "mcp/InfoTools.h"
 #include "mcp/ActionTools.h"
+#include "mcp/QueryTools.h"
 
 McpServer::McpServer() :
 	enabled(settings["mcp"]["enabled"].Bool())
 {
+	int journalSize = static_cast<int>(settings["mcp"]["journalSize"].Integer());
+	journalInstance = std::make_unique<mcptool::EventJournal>(journalSize > 0 ? journalSize : 4096);
+	requestTrackerInstance = std::make_unique<mcptool::RequestTracker>();
+	queryRegistryInstance = std::make_unique<mcptool::QueryRegistry>();
+	visitorInstance = std::make_unique<JournalVisitor>(*journalInstance, *requestTrackerInstance, *queryRegistryInstance);
+
 #ifdef ENABLE_MCP_SERVER
 	if(!enabled)
 		return;
@@ -64,6 +65,7 @@ McpServer::McpServer() :
 
 	registerInfoTools(srv.get());
 	registerActionTools(srv.get());
+	registerQueryTools(srv.get());
 
 	if(srv->start(false))
 	{
@@ -85,4 +87,12 @@ McpServer::~McpServer()
 
 	server->stop();
 #endif
+}
+
+void McpServer::onPackApplied(CPackForClient & pack)
+{
+	if(!enabled)
+		return;
+
+	pack.visit(*visitorInstance);
 }

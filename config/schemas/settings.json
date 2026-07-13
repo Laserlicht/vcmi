@@ -897,6 +897,18 @@
 				"port" : {
 					"type" : "number",
 					"default" : 9100
+				},
+				"requestTimeoutMs" : {
+					"type" : "number",
+					"default" : 10000
+				},
+				"eventWaitTimeoutMs" : {
+					"type" : "number",
+					"default" : 60000
+				},
+				"journalSize" : {
+					"type" : "number",
+					"default" : 4096
 				}
 			}
 		}

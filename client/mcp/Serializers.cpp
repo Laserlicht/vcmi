@@ -1,19 +1,14 @@
 /*
- * Helpers.cpp, part of VCMI engine
+ * Serializers.cpp, part of VCMI engine
  *
  * Authors: listed in file AUTHORS in main folder
  *
  * License: GNU General Public License v2.0 or later
  * Full text of license available in license.txt file, in main folder
- *
  */
 
 #include "StdInc.h"
-#include "Helpers.h"
-
-#ifdef ENABLE_MCP_SERVER
-#include <mcp_server.h>
-#endif
+#include "Serializers.h"
 
 #include "../../lib/json/JsonNode.h"
 #include "../../lib/json/JsonUtils.h"
@@ -30,6 +25,7 @@
 #include "../../lib/CSkillHandler.h"
 #include "../../lib/battle/Unit.h"
 #include "../../lib/mapObjects/CGDwelling.h"
+#include "../../lib/networkPacks/Component.h"
 
 PlayerColor parsePlayerColor(const std::string & name)
 {
@@ -80,6 +76,10 @@ JsonNode heroToJson(const CGHeroInstance * h)
 	entry["name"] = JsonNode(h->getNameTranslated());
 	entry["id"] = JsonNode(h->id.getNum());
 	entry["typeId"] = JsonNode(h->getHeroTypeID().getNum());
+	entry["owner"] = JsonNode(h->tempOwner.toString());
+	entry["position"]["x"] = JsonNode(h->visitablePos().x);
+	entry["position"]["y"] = JsonNode(h->visitablePos().y);
+	entry["position"]["z"] = JsonNode(h->visitablePos().z);
 	entry["level"] = JsonNode(h->level);
 	entry["experience"] = JsonNode(h->exp);
 	entry["mana"] = JsonNode(h->mana);
@@ -114,6 +114,10 @@ JsonNode townToJson(const CGTownInstance * t)
 	JsonNode entry;
 	entry["name"] = JsonNode(t->getNameTranslated());
 	entry["id"] = JsonNode(t->id.getNum());
+	entry["owner"] = JsonNode(t->tempOwner.toString());
+	entry["position"]["x"] = JsonNode(t->visitablePos().x);
+	entry["position"]["y"] = JsonNode(t->visitablePos().y);
+	entry["position"]["z"] = JsonNode(t->visitablePos().z);
 	entry["faction"] = JsonNode(t->getFactionID());
 	entry["hasFort"] = JsonNode(t->hasFort());
 	JsonNode built;
@@ -362,4 +366,58 @@ JsonNode battleUnitToJson(const battle::Unit * u)
 		entry["creatureName"] = JsonNode(creature->getNameSingularTranslated());
 	}
 	return entry;
+}
+
+static std::string componentTypeToString(ComponentType type)
+{
+	switch(type)
+	{
+	case ComponentType::PRIM_SKILL: return "primarySkill";
+	case ComponentType::SEC_SKILL: return "secondarySkill";
+	case ComponentType::RESOURCE: return "resource";
+	case ComponentType::RESOURCE_PER_DAY: return "resourcePerDay";
+	case ComponentType::CREATURE: return "creature";
+	case ComponentType::ARTIFACT: return "artifact";
+	case ComponentType::SPELL_SCROLL: return "spellScroll";
+	case ComponentType::MANA: return "mana";
+	case ComponentType::EXPERIENCE: return "experience";
+	case ComponentType::LEVEL: return "level";
+	case ComponentType::SPELL: return "spell";
+	case ComponentType::MORALE: return "morale";
+	case ComponentType::LUCK: return "luck";
+	case ComponentType::BUILDING: return "building";
+	case ComponentType::HERO_PORTRAIT: return "heroPortrait";
+	case ComponentType::FLAG: return "flag";
+	default: return "none";
+	}
+}
+
+JsonNode componentToJson(const Component & c)
+{
+	JsonNode entry;
+	entry["type"] = JsonNode(componentTypeToString(c.type));
+	if(c.subType.hasValue())
+	{
+		entry["subTypeId"] = JsonNode(c.subType.getNum());
+		try
+		{
+			entry["subTypeCode"] = JsonNode(c.subType.toString());
+		}
+		catch(const std::exception &)
+		{
+			// Not every identifier kind carried by ComponentSubType has a registered mod
+			// identifier (e.g. PlayerColor, PrimarySkill) - subTypeId above is always valid.
+		}
+	}
+	if(c.value.has_value())
+		entry["value"] = JsonNode(*c.value);
+	return entry;
+}
+
+JsonNode componentsToJson(const std::vector<Component> & components)
+{
+	JsonNode arr;
+	for(auto & c : components)
+		arr.Vector().push_back(componentToJson(c));
+	return arr;
 }

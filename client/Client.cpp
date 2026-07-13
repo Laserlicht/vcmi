@@ -19,6 +19,7 @@
 #include "battle/BattleInterface.h"
 #include "GameEngine.h"
 #include "GameInstance.h"
+#include "McpServer.h"
 #include "gui/WindowHandler.h"
 #include "mapView/mapHandler.h"
 
@@ -325,6 +326,8 @@ void CClient::handlePack(CPackForClient & pack)
 	logNetwork->trace("\tApplied on gs: %s", typeid(pack).name());
 	pack.visit(afterVisitor);
 	logNetwork->trace("\tMade second apply on cl: %s", typeid(pack).name());
+
+	ENGINE->mcpServer().onPackApplied(pack);
 }
 
 std::optional<BattleAction> CClient::makeSurrenderRetreatDecision(PlayerColor player, const BattleID & battleID, const BattleStateInfoForRetreat & battleState)
