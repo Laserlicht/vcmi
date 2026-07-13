@@ -13,6 +13,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <optional>
+#include <string>
 
 namespace mcptool
 {
@@ -28,6 +29,14 @@ namespace mcptool
 class RequestTracker
 {
 public:
+	struct Outcome
+	{
+		bool applied = false;
+		/// Set when the action never reached the server: a validation failure (e.g. unknown
+		/// object id, wrong owner) caught on the main thread before/instead of issuing a request.
+		std::string errorMessage;
+	};
+
 	class ActionLock
 	{
 	public:
@@ -45,8 +54,12 @@ public:
 	/// Called from JournalVisitor::visitPackageApplied for every applied request.
 	void reportApplied(bool result);
 
-	/// Blocks until reportApplied() runs or timeout elapses. nullopt means timeout.
-	std::optional<bool> waitResult(std::chrono::milliseconds timeout);
+	/// Called when the dispatched action threw instead of issuing a request - see actionTool()
+	/// for why this must never be allowed to happen via an uncaught C++ exception instead.
+	void reportLocalError(const std::string & message);
+
+	/// Blocks until reportApplied()/reportLocalError() runs or timeout elapses. nullopt means timeout.
+	std::optional<Outcome> waitResult(std::chrono::milliseconds timeout);
 
 private:
 	std::mutex actionMutex;
@@ -54,7 +67,7 @@ private:
 	std::mutex stateMutex;
 	std::condition_variable cv;
 	bool waiting = false;
-	std::optional<bool> result;
+	std::optional<Outcome> result;
 };
 
 }

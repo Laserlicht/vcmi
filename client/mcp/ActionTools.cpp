@@ -34,7 +34,7 @@ namespace
 	mcp::json handleExecuteCommand(const mcp::json & params, const std::string &)
 	{
 		auto cmd = params["command"].get<std::string>();
-		ENGINE->dispatchMainThread([cmd]() {
+		mcptool::dispatchMainThreadSafe([cmd]() {
 			if(GAME->interface())
 			{
 				ClientCommandManager commandController;

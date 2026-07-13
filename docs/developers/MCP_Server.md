@@ -78,11 +78,14 @@ works; two common ones:
   }
   ```
 
-  `status` is `"ok"`, `"rejected"` (the server refused the request - not your turn, not owned,
-  insufficient resources, ...), or `"pending"` (no acknowledgement within the timeout; poll with
-  `get_events`/`wait_for_event`). `events` is everything that happened as a consequence of the
-  action since it was issued - not just an echo of the action itself, but AI turns, level-ups,
-  battle rounds, and so on that may have followed.
+  `status` is `"ok"`, `"rejected"` (either the server refused the request - not your turn, not
+  owned, insufficient resources, ... - or a client-side validation check failed before any
+  request was even sent, e.g. an unknown object id), or `"pending"` (no acknowledgement within
+  the timeout; poll with `get_events`/`wait_for_event`). A `"rejected"` response includes an
+  `error` field with the reason when the tool can determine one (client-side validation always
+  does; a bare server refusal may not). `events` is everything that happened as a consequence of
+  the action since it was issued - not just an echo of the action itself, but AI turns,
+  level-ups, battle rounds, and so on that may have followed.
 - **Dialogs.** Anything that would pop up a blocking window for a human (level-up skill choice,
   "do you want to fight?", garrison exchange, teleport exit picker, market/tavern windows, battle
   results) shows up in `get_pending_queries` and must be answered with `answer_query` before the

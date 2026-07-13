@@ -25,13 +25,24 @@ void RequestTracker::reportApplied(bool applied)
 	std::lock_guard lock(stateMutex);
 	if(waiting)
 	{
-		result = applied;
+		result = Outcome{applied, {}};
 		waiting = false;
 		cv.notify_all();
 	}
 }
 
-std::optional<bool> RequestTracker::waitResult(std::chrono::milliseconds timeout)
+void RequestTracker::reportLocalError(const std::string & message)
+{
+	std::lock_guard lock(stateMutex);
+	if(waiting)
+	{
+		result = Outcome{false, message};
+		waiting = false;
+		cv.notify_all();
+	}
+}
+
+std::optional<RequestTracker::Outcome> RequestTracker::waitResult(std::chrono::milliseconds timeout)
 {
 	std::unique_lock lock(stateMutex);
 	cv.wait_for(lock, timeout, [this]() { return result.has_value(); });

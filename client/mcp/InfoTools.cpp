@@ -374,35 +374,35 @@ void registerInfoTools(mcp::server * srv)
 		mcp::tool_builder("list_creatures")
 			.with_description("List all creatures with their stats")
 			.build(),
-		[](const mcp::json &, const std::string &) { return mcptool::readTool(listCreatures); }
+		[](const mcp::json &, const std::string &) { return mcptool::staticReadTool(listCreatures); }
 	);
 
 	srv->register_tool(
 		mcp::tool_builder("get_config")
 			.with_description("Get full merged game configuration")
 			.build(),
-		[](const mcp::json &, const std::string &) { return mcptool::readTool(getFullGameConfig); }
+		[](const mcp::json &, const std::string &) { return mcptool::staticReadTool(getFullGameConfig); }
 	);
 
 	srv->register_tool(
 		mcp::tool_builder("list_artifacts")
 			.with_description("List all artifacts with their stats")
 			.build(),
-		[](const mcp::json &, const std::string &) { return mcptool::readTool(listArtifacts); }
+		[](const mcp::json &, const std::string &) { return mcptool::staticReadTool(listArtifacts); }
 	);
 
 	srv->register_tool(
 		mcp::tool_builder("list_spells")
 			.with_description("List all spells with their stats")
 			.build(),
-		[](const mcp::json &, const std::string &) { return mcptool::readTool(listSpells); }
+		[](const mcp::json &, const std::string &) { return mcptool::staticReadTool(listSpells); }
 	);
 
 	srv->register_tool(
 		mcp::tool_builder("list_skills")
 			.with_description("List all secondary skills")
 			.build(),
-		[](const mcp::json &, const std::string &) { return mcptool::readTool(listSkills); }
+		[](const mcp::json &, const std::string &) { return mcptool::staticReadTool(listSkills); }
 	);
 
 	srv->register_tool(

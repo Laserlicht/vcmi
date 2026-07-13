@@ -625,8 +625,26 @@ script (section 15) passing.
    of a rejected pack where possible.
 4. **Event volume** — big AI turns can flood the journal (FoW aggregation mitigates); tune
    which packs are journal-worthy with real traces.
-5. **cpp-mcp maturity** — session handling/streaming quirks; pin submodule, wrap all handler
-   entry points in try/catch (cpp-mcp converts exceptions to JSON-RPC errors — verify).
+5. **cpp-mcp maturity** — session handling/streaming quirks; pin submodule. cpp-mcp *does*
+   wrap each tool handler's synchronous return in try/catch and turns an escaping exception into
+   a JSON-RPC error — but that only covers the calling (MCP worker) thread. **Fixed 2026-07-14,
+   found via a real crash report**: action tools dispatch their actual work to the main GUI
+   thread via `ENGINE->dispatchMainThread`, invoked from `InputHandler::handleUserEvent`, which
+   has *no* exception handling of its own — a validation `throw` inside that dispatched functor
+   (e.g. `requireHero` failing, or `buildBuilding` returning false) called `std::terminate()` and
+   killed the whole client process, not just the one tool call. Every subsequent tool call then
+   appeared to "time out" (the server process was dead). Fixed by making `ToolContext::actionTool`
+   catch inside the dispatched lambda and report the failure through `RequestTracker` as
+   `status:"rejected"` + a new `error` field, and by adding `dispatchMainThreadSafe` (catch-and-log)
+   for the fire-and-forget dispatches (`execute_command`, `LobbyTools`) that have no envelope to
+   report through. **Rule going forward: never call `ENGINE->dispatchMainThread` directly from
+   MCP code — always go through `actionTool` or `dispatchMainThreadSafe`.** Also split static-data
+   read tools (`list_creatures`, `list_artifacts`, `list_spells`, `list_skills`, `get_config`,
+   `list_buildings`, `list_hero_types`) off the `CGameState::mutex` lock via a new
+   `staticReadTool` — they only touch `LIBRARY`, so needlessly taking the lock could stall them
+   for the entire duration of a long AI turn's pack processing (`shared_mutex` blocks new readers
+   behind a pending writer), which likely explains the reported intermittent timeouts on
+   `list_creatures` even before a crash occurred.
 6. **Simultaneous turns (simturns)** — request rejection is more common; envelope already
    copes (`status: rejected`), but battle+simturns interplay needs testing.
 7. **Save-compat & mods** — none affected (no lib/serialization changes) — a design invariant

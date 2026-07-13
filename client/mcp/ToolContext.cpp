@@ -61,6 +61,30 @@ mcp::json readTool(const std::function<JsonNode()> & fn)
 	return textContent(fn());
 }
 
+mcp::json staticReadTool(const std::function<JsonNode()> & fn)
+{
+	return textContent(fn());
+}
+
+void dispatchMainThreadSafe(const std::function<void()> & fn)
+{
+	ENGINE->dispatchMainThread([fn]()
+	{
+		try
+		{
+			fn();
+		}
+		catch(const std::exception & e)
+		{
+			logGlobal->error("MCP: main-thread action failed: %s", e.what());
+		}
+		catch(...)
+		{
+			logGlobal->error("MCP: main-thread action failed with a non-standard exception");
+		}
+	});
+}
+
 mcp::json actionTool(const std::function<void()> & fn)
 {
 	auto & mcp = ENGINE->mcpServer();
@@ -69,20 +93,42 @@ mcp::json actionTool(const std::function<void()> & fn)
 	mcp.requestTracker().beginWait();
 	uint64_t markerSeq = mcp.journal().currentSeq();
 
-	ENGINE->dispatchMainThread(fn);
+	auto & tracker = mcp.requestTracker();
+	ENGINE->dispatchMainThread([fn, &tracker]()
+	{
+		// See the actionTool() declaration comment: this catch is load-bearing, not defensive
+		// polish. fn runs via InputHandler::handleUserEvent, which has no exception handling of
+		// its own - letting fn's validation throws (requireHero, etc.) escape here would call
+		// std::terminate() and kill the whole client process instead of reporting a tool error.
+		try
+		{
+			fn();
+		}
+		catch(const std::exception & e)
+		{
+			tracker.reportLocalError(e.what());
+		}
+		catch(...)
+		{
+			tracker.reportLocalError("Unknown error");
+		}
+	});
 
 	int timeoutMs = settings["mcp"]["requestTimeoutMs"].Integer();
 	if(timeoutMs <= 0)
 		timeoutMs = 10000;
-	auto applied = mcp.requestTracker().waitResult(std::chrono::milliseconds(timeoutMs));
+	auto outcome = mcp.requestTracker().waitResult(std::chrono::milliseconds(timeoutMs));
 
 	JsonNode envelope;
-	if(!applied.has_value())
+	if(!outcome.has_value())
 		envelope["status"] = JsonNode(std::string("pending"));
-	else if(*applied)
+	else if(outcome->applied)
 		envelope["status"] = JsonNode(std::string("ok"));
 	else
 		envelope["status"] = JsonNode(std::string("rejected"));
+
+	if(outcome.has_value() && !outcome->errorMessage.empty())
+		envelope["error"] = JsonNode(outcome->errorMessage);
 
 	JsonNode eventsJson;
 	for(auto & entry : mcp.journal().since(markerSeq))

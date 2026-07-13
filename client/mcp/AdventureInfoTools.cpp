@@ -354,14 +354,14 @@ void registerAdventureInfoTools(mcp::server * srv)
 		mcp::tool_builder("list_buildings")
 			.with_description("List all town buildings per faction, with costs and upgrade chains")
 			.build(),
-		[](const mcp::json &, const std::string &) { return mcptool::readTool(listBuildings); }
+		[](const mcp::json &, const std::string &) { return mcptool::staticReadTool(listBuildings); }
 	);
 
 	srv->register_tool(
 		mcp::tool_builder("list_hero_types")
 			.with_description("List all hero types with class, starting army and skills")
 			.build(),
-		[](const mcp::json &, const std::string &) { return mcptool::readTool(listHeroTypes); }
+		[](const mcp::json &, const std::string &) { return mcptool::staticReadTool(listHeroTypes); }
 	);
 }
 
