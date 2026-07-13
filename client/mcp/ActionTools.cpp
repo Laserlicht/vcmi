@@ -31,24 +31,6 @@
 
 namespace
 {
-	const CGHeroInstance * requireHero(CCallback & cb, int heroId)
-	{
-		auto obj = cb.getObj(ObjectInstanceID(heroId), false);
-		auto hero = dynamic_cast<const CGHeroInstance *>(obj);
-		if(!hero)
-			throw std::runtime_error("No hero with id " + std::to_string(heroId));
-		return hero;
-	}
-
-	const CGTownInstance * requireTown(CCallback & cb, int townId)
-	{
-		auto obj = cb.getObj(ObjectInstanceID(townId), false);
-		auto town = dynamic_cast<const CGTownInstance *>(obj);
-		if(!town)
-			throw std::runtime_error("No town with id " + std::to_string(townId));
-		return town;
-	}
-
 	mcp::json handleExecuteCommand(const mcp::json & params, const std::string &)
 	{
 		auto cmd = params["command"].get<std::string>();
@@ -70,11 +52,11 @@ namespace
 		return mcptool::actionTool([heroId, dest]()
 		{
 			auto & cb = mcptool::activeCallback();
-			auto hero = requireHero(cb, heroId);
+			auto & hero = mcptool::requireHero(cb, heroId);
 			auto pi = GAME->interface();
 
-			if(pi->localState->setPath(hero, dest, EPathfindingLayer::AUTO))
-				pi->moveHero(hero, pi->localState->getPath(hero));
+			if(pi->localState->setPath(&hero, dest, EPathfindingLayer::AUTO))
+				pi->moveHero(&hero, pi->localState->getPath(&hero));
 			else
 				throw std::runtime_error("No path to destination");
 		});
@@ -100,12 +82,10 @@ namespace
 		{
 			auto & cb = mcptool::activeCallback();
 			auto dwelling = dynamic_cast<const CGDwelling *>(cb.getObj(ObjectInstanceID(townId), false));
-			auto army = dynamic_cast<const CArmedInstance *>(cb.getObj(ObjectInstanceID(destId), false));
 			if(!dwelling)
 				throw std::runtime_error("No dwelling/town with id " + std::to_string(townId));
-			if(!army)
-				throw std::runtime_error("No garrison with id " + std::to_string(destId));
-			cb.recruitCreatures(dwelling, army, CreatureID(creatureId), amount, level);
+			auto & army = mcptool::requireArmedInstance(cb, destId);
+			cb.recruitCreatures(dwelling, &army, CreatureID(creatureId), amount, level);
 		});
 	}
 
@@ -117,8 +97,8 @@ namespace
 		return mcptool::actionTool([townId, buildingId]()
 		{
 			auto & cb = mcptool::activeCallback();
-			auto town = requireTown(cb, townId);
-			if(!cb.buildBuilding(town, BuildingID(buildingId)))
+			auto & town = mcptool::requireTown(cb, townId);
+			if(!cb.buildBuilding(&town, BuildingID(buildingId)))
 				throw std::runtime_error("Building cannot be constructed (not owned, or requirements not met)");
 		});
 	}
@@ -130,9 +110,79 @@ namespace
 		return mcptool::actionTool([heroId]()
 		{
 			auto & cb = mcptool::activeCallback();
-			auto hero = requireHero(cb, heroId);
-			if(!cb.dismissHero(hero))
+			auto & hero = mcptool::requireHero(cb, heroId);
+			if(!cb.dismissHero(&hero))
 				throw std::runtime_error("Hero cannot be dismissed (not owned)");
+		});
+	}
+
+	mcp::json handleCastAdventureSpell(const mcp::json & params, const std::string &)
+	{
+		auto heroId = params["heroId"].get<int>();
+		auto spellId = params["spellId"].get<int>();
+		int3 pos(
+			params.contains("x") ? params["x"].get<int>() : -1,
+			params.contains("y") ? params["y"].get<int>() : -1,
+			params.contains("z") ? params["z"].get<int>() : -1);
+
+		return mcptool::actionTool([heroId, spellId, pos]()
+		{
+			auto & cb = mcptool::activeCallback();
+			auto & hero = mcptool::requireHero(cb, heroId);
+			cb.castSpell(&hero, SpellID(spellId), pos);
+		});
+	}
+
+	mcp::json handleDig(const mcp::json & params, const std::string &)
+	{
+		auto heroId = params["heroId"].get<int>();
+
+		return mcptool::actionTool([heroId]()
+		{
+			auto & cb = mcptool::activeCallback();
+			auto & hero = mcptool::requireHero(cb, heroId);
+			cb.dig(&hero);
+		});
+	}
+
+	mcp::json handleCastleGateTeleport(const mcp::json & params, const std::string &)
+	{
+		auto heroId = params["heroId"].get<int>();
+		auto townId = params["townId"].get<int>();
+
+		return mcptool::actionTool([heroId, townId]()
+		{
+			auto & cb = mcptool::activeCallback();
+			auto & hero = mcptool::requireHero(cb, heroId);
+			auto & town = mcptool::requireTown(cb, townId);
+			if(!cb.teleportHero(&hero, &town))
+				throw std::runtime_error("Teleport failed");
+		});
+	}
+
+	mcp::json handleSetFormation(const mcp::json & params, const std::string &)
+	{
+		auto heroId = params["heroId"].get<int>();
+		bool tight = params["tight"].get<bool>();
+
+		return mcptool::actionTool([heroId, tight]()
+		{
+			auto & cb = mcptool::activeCallback();
+			auto & hero = mcptool::requireHero(cb, heroId);
+			cb.setFormation(&hero, tight ? EArmyFormation::TIGHT : EArmyFormation::LOOSE);
+		});
+	}
+
+	mcp::json handleSetTactics(const mcp::json & params, const std::string &)
+	{
+		auto heroId = params["heroId"].get<int>();
+		bool enabled = params["enabled"].get<bool>();
+
+		return mcptool::actionTool([heroId, enabled]()
+		{
+			auto & cb = mcptool::activeCallback();
+			auto & hero = mcptool::requireHero(cb, heroId);
+			cb.setTactics(&hero, enabled);
 		});
 	}
 }
@@ -192,6 +242,53 @@ void registerActionTools(mcp::server * srv)
 			.with_number_param("heroId", "Hero instance ID to dismiss", true)
 			.build(),
 		handleDismissHero
+	);
+
+	srv->register_tool(
+		mcp::tool_builder("cast_adventure_spell")
+			.with_description("Cast an adventure-map spell with a hero (Town Portal, Fly, Water Walk, Dimension Door, ...)")
+			.with_number_param("heroId", "Hero instance ID", true)
+			.with_number_param("spellId", "Spell ID", true)
+			.with_number_param("x", "Target X coordinate, if the spell needs one", false)
+			.with_number_param("y", "Target Y coordinate, if the spell needs one", false)
+			.with_number_param("z", "Target Z coordinate, if the spell needs one", false)
+			.build(),
+		handleCastAdventureSpell
+	);
+
+	srv->register_tool(
+		mcp::tool_builder("dig")
+			.with_description("Dig for the Grail with a hero standing on the correct tile")
+			.with_number_param("heroId", "Hero instance ID", true)
+			.build(),
+		handleDig
+	);
+
+	srv->register_tool(
+		mcp::tool_builder("castle_gate_teleport")
+			.with_description("Teleport a hero through the Castle Gate to another owned town with a Castle Gate")
+			.with_number_param("heroId", "Hero instance ID", true)
+			.with_number_param("townId", "Destination town instance ID", true)
+			.build(),
+		handleCastleGateTeleport
+	);
+
+	srv->register_tool(
+		mcp::tool_builder("set_formation")
+			.with_description("Set a hero's army formation")
+			.with_number_param("heroId", "Hero instance ID", true)
+			.with_boolean_param("tight", "true for tight formation, false for loose", true)
+			.build(),
+		handleSetFormation
+	);
+
+	srv->register_tool(
+		mcp::tool_builder("set_tactics")
+			.with_description("Enable or disable the tactics phase for a hero's next battle")
+			.with_number_param("heroId", "Hero instance ID", true)
+			.with_boolean_param("enabled", "true to enable tactics", true)
+			.build(),
+		handleSetTactics
 	);
 }
 

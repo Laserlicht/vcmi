@@ -26,6 +26,10 @@
 #include "../../lib/battle/Unit.h"
 #include "../../lib/mapObjects/CGDwelling.h"
 #include "../../lib/networkPacks/Component.h"
+#include "../../lib/mapping/TerrainTile.h"
+#include "../../lib/entities/building/CBuilding.h"
+#include "../../lib/entities/hero/CHero.h"
+#include "../../lib/int3.h"
 
 PlayerColor parsePlayerColor(const std::string & name)
 {
@@ -420,4 +424,86 @@ JsonNode componentsToJson(const std::vector<Component> & components)
 	for(auto & c : components)
 		arr.Vector().push_back(componentToJson(c));
 	return arr;
+}
+
+JsonNode terrainTileToJson(const TerrainTile & tile, const int3 & pos)
+{
+	JsonNode entry;
+	entry["x"] = JsonNode(pos.x);
+	entry["y"] = JsonNode(pos.y);
+	entry["z"] = JsonNode(pos.z);
+	entry["terrainId"] = JsonNode(tile.getTerrainID().getNum());
+	auto * terrain = tile.getTerrain();
+	if(terrain)
+		entry["terrainName"] = JsonNode(terrain->getNameTranslated());
+	entry["isWater"] = JsonNode(tile.isWater());
+	entry["isLand"] = JsonNode(tile.isLand());
+	entry["hasRoad"] = JsonNode(tile.hasRoad());
+	entry["hasRiver"] = JsonNode(tile.hasRiver());
+	entry["blocked"] = JsonNode(tile.blocked());
+	entry["visitable"] = JsonNode(tile.visitable());
+	JsonNode visitableObjs;
+	for(auto & id : tile.visitableObjects)
+		visitableObjs.Vector().push_back(JsonNode(id.getNum()));
+	entry["visitableObjects"] = visitableObjs;
+	JsonNode blockingObjs;
+	for(auto & id : tile.blockingObjects)
+		blockingObjs.Vector().push_back(JsonNode(id.getNum()));
+	entry["blockingObjects"] = blockingObjs;
+	return entry;
+}
+
+JsonNode buildingToJson(const CBuilding * b)
+{
+	JsonNode entry;
+	entry["id"] = JsonNode(b->bid.getNum());
+	entry["name"] = JsonNode(b->getNameTranslated());
+	entry["description"] = JsonNode(b->getDescriptionTranslated());
+	JsonNode cost;
+	for(int i = 0; i < GameResID::COUNT; i++)
+		if(b->resources[GameResID(i)] != 0)
+			cost[GameResID::encode(i)] = JsonNode(static_cast<si64>(b->resources[GameResID(i)]));
+	entry["cost"] = cost;
+	if(b->upgrade != BuildingID::NONE)
+		entry["upgradeOf"] = JsonNode(b->upgrade.getNum());
+	entry["mode"] = JsonNode(static_cast<int>(b->mode));
+	return entry;
+}
+
+JsonNode heroTypeToJson(const HeroType * h)
+{
+	JsonNode entry;
+	entry["id"] = JsonNode(h->getId().getNum());
+	entry["name"] = JsonNode(h->getNameTranslated());
+	auto * ch = dynamic_cast<const CHero *>(h);
+	if(ch)
+	{
+		entry["gender"] = JsonNode(static_cast<int>(ch->gender));
+		if(ch->heroClass)
+		{
+			entry["heroClassId"] = JsonNode(ch->heroClass->getId().getNum());
+			entry["heroClassName"] = JsonNode(ch->heroClass->getNameTranslated());
+		}
+		JsonNode army;
+		for(auto & stack : ch->initialArmy)
+		{
+			JsonNode se;
+			se["creatureId"] = JsonNode(stack.creature.getNum());
+			se["minAmount"] = JsonNode(static_cast<int>(stack.minAmount));
+			se["maxAmount"] = JsonNode(static_cast<int>(stack.maxAmount));
+			army.Vector().push_back(se);
+		}
+		entry["initialArmy"] = army;
+		JsonNode skills;
+		for(auto & [skill, level] : ch->secSkillsInit)
+		{
+			JsonNode se;
+			se["id"] = JsonNode(skill.getNum());
+			se["level"] = JsonNode(static_cast<int>(level));
+			skills.Vector().push_back(se);
+		}
+		entry["initialSkills"] = skills;
+		entry["hasSpellbook"] = JsonNode(ch->haveSpellBook);
+	}
+	return entry;
 }

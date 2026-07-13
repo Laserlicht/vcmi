@@ -25,7 +25,12 @@
 #include "mcp/JournalVisitor.h"
 
 #include "mcp/InfoTools.h"
+#include "mcp/AdventureInfoTools.h"
 #include "mcp/ActionTools.h"
+#include "mcp/ArmyTools.h"
+#include "mcp/ArtifactTools.h"
+#include "mcp/TownTools.h"
+#include "mcp/BattleTools.h"
 #include "mcp/QueryTools.h"
 
 McpServer::McpServer() :
@@ -64,7 +69,12 @@ McpServer::McpServer() :
 	});
 
 	registerInfoTools(srv.get());
+	registerAdventureInfoTools(srv.get());
 	registerActionTools(srv.get());
+	registerArmyTools(srv.get());
+	registerArtifactTools(srv.get());
+	registerTownTools(srv.get());
+	registerBattleTools(srv.get());
 	registerQueryTools(srv.get());
 
 	if(srv->start(false))

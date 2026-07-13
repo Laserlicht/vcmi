@@ -222,7 +222,12 @@ set(vcmiclientcommon_SRCS
 	Discord.cpp
 	McpServer.cpp
 	mcp/InfoTools.cpp
+	mcp/AdventureInfoTools.cpp
 	mcp/ActionTools.cpp
+	mcp/ArmyTools.cpp
+	mcp/ArtifactTools.cpp
+	mcp/TownTools.cpp
+	mcp/BattleTools.cpp
 	mcp/QueryTools.cpp
 	mcp/Serializers.cpp
 	mcp/ToolContext.cpp
@@ -483,7 +488,12 @@ set(vcmiclientcommon_HEADERS
 	Discord.h
 	McpServer.h
 	mcp/InfoTools.h
+	mcp/AdventureInfoTools.h
 	mcp/ActionTools.h
+	mcp/ArmyTools.h
+	mcp/ArtifactTools.h
+	mcp/TownTools.h
+	mcp/BattleTools.h
 	mcp/QueryTools.h
 	mcp/Serializers.h
 	mcp/ToolContext.h

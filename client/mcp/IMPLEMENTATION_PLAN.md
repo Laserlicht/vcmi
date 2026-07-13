@@ -570,11 +570,16 @@ manually or via `--donotstartserver`/CLI options.
 |---|---|---|
 | **0. Refactor** ✅ | Introduce `ToolContext`, `Serializers` (absorb Helpers); port the 20 existing tools onto `mcp::tool_builder` + `ToolContext::readTool`; delete duplicated boilerplate | identical behavior, clean base |
 | **1. Feedback core** ✅ | `handlePack` hook, `EventJournal` + `JournalVisitor`, `RequestTracker`, `QueryRegistry`; tools `get_events`, `wait_for_event`, `get_pending_queries`, `answer_query`; action envelope with wait; retrofit existing 6 actions | LLM sees consequences & can answer dialogs — action tools now return `{status, events, pendingQueries}` instead of "queued for execution" |
-| **2. Read completeness** | Serializers for tiles/objects/paths/markets/quests/tavern/buildings + tools `get_tiles`, `get_object_details`, `get_hero_path`, `get_market_info`, `get_tavern_heroes`, `get_quests`, `list_buildings`, `list_hero_types`; static data as resources | LLM can plan like a human player |
-| **3. Action completeness (adventure)** | All remaining PacksForServer tools of section 5 (army, artifacts, town, trade, spells, misc) | full adventure-map control |
-| **4. Battle** | `get_battle_state` extension (reachability, damage estimates, turn queue), `battle_*` tools, battle wait loop, `BattleResult` query handling | full battle control |
-| **5. Polish** | GUI dialog dismissal on external answer, `get_statistics`, settings additions, docs page (`docs/developers/MCP_Server.md`) with example client configs (Claude Desktop/Code), tool description pass | mixed human+LLM usable |
+| **2. Read completeness** ✅ | `AdventureInfoTools.cpp` + `Serializers` additions for tiles/buildings/hero types; tools `get_tiles`, `get_object_details`, `get_hero_path`, `get_market_info`, `get_tavern_heroes`, `get_quests`, `list_buildings`, `list_hero_types` | LLM can plan like a human player. Static data still exposed as regular tools rather than MCP resources - not yet done |
+| **3. Action completeness (adventure)** ✅ | `ArmyTools.cpp` (swap/merge/split/rebalance/move stacks, dismiss, upgrade), `ArtifactTools.cpp` (move/transfer/assemble/buy/sort/costume), `TownTools.cpp` (visit building/hire hero/swap garrison/research spell/rename/build boat/trade), hero misc actions added to `ActionTools.cpp` (cast spell/dig/castle gate/formation/tactics) | full adventure-map control, ~30 new action tools |
+| **4. Battle** ✅ | `BattleTools.cpp`: battle_move/attack/shoot/wait/defend/heal/catapult/cast_spell(hero-only)/retreat/surrender/end_tactics, tactics-phase dispatch via `battleMakeTacticAction` | battle control for all common actions; creature-ability casts (`makeCreatureSpellcast`/`makeWalkAndCast`) and richer `get_battle_state` (reachability/damage estimates/turn queue) still open |
+| **5. Polish** | GUI dialog dismissal on external answer, `get_statistics`, docs page (`docs/developers/MCP_Server.md`) with example client configs (Claude Desktop/Code), tool description pass | mixed human+LLM usable |
 | **6. Optional** | Lobby control (section 13), campaign support checks, MCP resource templates for per-object URIs | game-session automation |
+
+Phases 2-4 verified: full project builds and links with `ENABLE_MCP_SERVER=ON` (2026-07-14). Not yet
+live-tested end-to-end (needs a running game with a human-controlled interface) - the earlier
+Phase 0/1 live smoke test only exercised the read/journal path before the environment's AI-setup
+crash (unrelated to MCP, see git history).
 
 Each phase compiles green with `ENABLE_MCP_SERVER` on and off, and ends with the manual test
 script (section 15) passing.

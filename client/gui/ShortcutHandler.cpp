@@ -34,6 +34,8 @@ void ShortcutHandler::reloadShortcuts()
 	for (auto const & entry : keyBindingsConfig["keyboard"].Struct())
 	{
 		EShortcut shortcutID = findShortcut(entry.first);
+		if (shortcutID == EShortcut::NONE)
+			continue; // unrecognized entry (e.g. stale or mod-provided binding) - already warned about in loadShortcuts()
 		assert(!vstd::contains(assignedShortcuts, shortcutID));
 		assignedShortcuts.push_back(shortcutID);
 	}

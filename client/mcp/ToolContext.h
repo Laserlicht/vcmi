@@ -19,6 +19,9 @@
 
 VCMI_LIB_NAMESPACE_BEGIN
 class CCallback;
+class CGHeroInstance;
+class CGTownInstance;
+class CArmedInstance;
 VCMI_LIB_NAMESPACE_END
 
 namespace mcptool
@@ -48,6 +51,13 @@ mcp::json readTool(const std::function<JsonNode()> & fn);
 /// completion is detected via "next PackageApplied observed", not by request id - see
 /// RequestTracker for the reasoning. fn must perform exactly one CCallback call.
 mcp::json actionTool(const std::function<void()> & fn);
+
+/// Object lookup helpers shared by action tools; throw std::runtime_error (-> tool error) with
+/// an actionable message instead of the silent no-ops the raw CCallback::getObj + dynamic_cast
+/// pattern encourages.
+const CGHeroInstance & requireHero(CCallback & cb, int heroId);
+const CGTownInstance & requireTown(CCallback & cb, int townId);
+const CArmedInstance & requireArmedInstance(CCallback & cb, int objectId);
 
 #endif
 

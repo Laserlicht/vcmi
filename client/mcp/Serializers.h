@@ -22,6 +22,10 @@ class Artifact;
 class Skill;
 class CArtifactInstance;
 struct Component;
+struct TerrainTile;
+class CBuilding;
+class HeroType;
+class int3;
 
 PlayerColor parsePlayerColor(const std::string & name);
 
@@ -40,3 +44,8 @@ JsonNode battleUnitToJson(const battle::Unit * u);
 /// JSON description an LLM can act on: component kind, referenced entity id/code, and value.
 JsonNode componentToJson(const Component & c);
 JsonNode componentsToJson(const std::vector<Component> & components);
+
+/// Static, mod-config data - stable for the whole session, safe to cache client-side.
+JsonNode terrainTileToJson(const TerrainTile & tile, const int3 & pos);
+JsonNode buildingToJson(const CBuilding * b);
+JsonNode heroTypeToJson(const HeroType * h);

@@ -17,6 +17,9 @@
 #include "../../lib/CConfigHandler.h"
 #include "../../lib/gameState/CGameState.h"
 #include "../../lib/callback/CCallback.h"
+#include "../../lib/mapObjects/CGHeroInstance.h"
+#include "../../lib/mapObjects/CGTownInstance.h"
+#include "../../lib/mapObjects/army/CArmedInstance.h"
 
 #include "../GameInstance.h"
 #include "../GameEngine.h"
@@ -92,6 +95,30 @@ mcp::json actionTool(const std::function<void()> & fn)
 	envelope["pendingQueries"] = queriesJson;
 
 	return textContent(envelope);
+}
+
+const CGHeroInstance & requireHero(CCallback & cb, int heroId)
+{
+	auto hero = dynamic_cast<const CGHeroInstance *>(cb.getObj(ObjectInstanceID(heroId), false));
+	if(!hero)
+		throw std::runtime_error("No hero with id " + std::to_string(heroId));
+	return *hero;
+}
+
+const CGTownInstance & requireTown(CCallback & cb, int townId)
+{
+	auto town = dynamic_cast<const CGTownInstance *>(cb.getObj(ObjectInstanceID(townId), false));
+	if(!town)
+		throw std::runtime_error("No town with id " + std::to_string(townId));
+	return *town;
+}
+
+const CArmedInstance & requireArmedInstance(CCallback & cb, int objectId)
+{
+	auto army = dynamic_cast<const CArmedInstance *>(cb.getObj(ObjectInstanceID(objectId), false));
+	if(!army)
+		throw std::runtime_error("No garrison with id " + std::to_string(objectId));
+	return *army;
 }
 
 }
