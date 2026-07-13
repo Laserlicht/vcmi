@@ -15,6 +15,8 @@
 #include "../../lib/networkPacks/PacksForClientBattle.h"
 #include "../../lib/mapObjects/CGObjectInstance.h"
 #include "../../lib/gameState/EVictoryLossCheckResult.h"
+#include "../../lib/gameState/GameStatistics.h"
+#include "../../lib/serializer/JsonSerializer.h"
 
 #include "EventJournal.h"
 #include "RequestTracker.h"
@@ -398,6 +400,8 @@ void JournalVisitor::visitResponseStatistic(ResponseStatistic & pack)
 {
 	JsonNode data;
 	data["player"] = JsonNode(pack.player.toString());
+	JsonSerializer ser(nullptr, data["statistics"]);
+	pack.statistic.serializeJson(ser);
 	journal.push("statisticsReady", data);
 }
 

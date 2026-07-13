@@ -32,6 +32,7 @@
 #include "mcp/TownTools.h"
 #include "mcp/BattleTools.h"
 #include "mcp/QueryTools.h"
+#include "mcp/LobbyTools.h"
 
 McpServer::McpServer() :
 	enabled(settings["mcp"]["enabled"].Bool())
@@ -76,6 +77,7 @@ McpServer::McpServer() :
 	registerTownTools(srv.get());
 	registerBattleTools(srv.get());
 	registerQueryTools(srv.get());
+	registerLobbyTools(srv.get());
 
 	if(srv->start(false))
 	{

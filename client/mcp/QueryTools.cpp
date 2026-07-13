@@ -19,6 +19,7 @@
 #include "../../lib/json/JsonNode.h"
 #include "../../lib/constants/EntityIdentifiers.h"
 #include "../../lib/callback/CCallback.h"
+#include "../../lib/mapObjects/CGObjectInstance.h"
 
 #include "../GameEngine.h"
 #include "../McpServer.h"
@@ -103,6 +104,52 @@ namespace
 			cb.sendQueryReply(reply, QueryID(queryId));
 		});
 	}
+
+	mcp::json handleGetStatistics(const mcp::json &, const std::string &)
+	{
+		// The stats payload itself rides in the "statisticsReady" journal event within the
+		// action envelope (see JournalVisitor::visitResponseStatistic) - no separate fetch needed.
+		return mcptool::actionTool([]()
+		{
+			mcptool::activeCallback().requestStatistic();
+		});
+	}
+
+	mcp::json handleSaveGame(const mcp::json & params, const std::string &)
+	{
+		auto filename = params["filename"].get<std::string>();
+		bool notifySuccess = params.contains("notifySuccess") ? params["notifySuccess"].get<bool>() : true;
+
+		return mcptool::actionTool([filename, notifySuccess]()
+		{
+			mcptool::activeCallback().save(filename, notifySuccess);
+		});
+	}
+
+	mcp::json handleSendChatMessage(const mcp::json & params, const std::string &)
+	{
+		auto text = params["text"].get<std::string>();
+		auto objectId = params.contains("objectId") ? params["objectId"].get<int>() : ObjectInstanceID::NONE.getNum();
+
+		return mcptool::actionTool([text, objectId]()
+		{
+			auto & cb = mcptool::activeCallback();
+			const CGObjectInstance * obj = (objectId != ObjectInstanceID::NONE.getNum())
+				? cb.getObj(ObjectInstanceID(objectId), false)
+				: nullptr;
+			cb.sendMessage(text, obj);
+		});
+	}
+
+	mcp::json handleSetGamePause(const mcp::json & params, const std::string &)
+	{
+		bool paused = params["paused"].get<bool>();
+
+		return mcptool::actionTool([paused]()
+		{
+			mcptool::activeCallback().gamePause(paused);
+		});
+	}
 }
 
 void registerQueryTools(mcp::server * srv)
@@ -141,6 +188,39 @@ void registerQueryTools(mcp::server * srv)
 			.with_number_param("reply", "Selected option (omit for cancel, if the dialog allows it)", false)
 			.build(),
 		handleAnswerQuery
+	);
+
+	srv->register_tool(
+		mcp::tool_builder("get_statistics")
+			.with_description("Request the game statistics dataset (per-player history: resources, army strength, exploration, battles, ...). The data is returned inside the response's events array, as a 'statisticsReady' entry.")
+			.build(),
+		handleGetStatistics
+	);
+
+	srv->register_tool(
+		mcp::tool_builder("save_game")
+			.with_description("Save the current game")
+			.with_string_param("filename", "Save file name", true)
+			.with_boolean_param("notifySuccess", "Show a confirmation to the player on success (default true)", false)
+			.build(),
+		handleSaveGame
+	);
+
+	srv->register_tool(
+		mcp::tool_builder("send_chat_message")
+			.with_description("Send a chat message. Also accepts VCMI's console cheat codes (e.g. 'vcmiistari'), same as a human typing them in chat.")
+			.with_string_param("text", "Message text (or cheat code)", true)
+			.with_number_param("objectId", "Currently selected/relevant object, for object-scoped cheats (optional)", false)
+			.build(),
+		handleSendChatMessage
+	);
+
+	srv->register_tool(
+		mcp::tool_builder("set_game_pause")
+			.with_description("Pause or unpause the game (single-player only)")
+			.with_boolean_param("paused", "true to pause, false to resume", true)
+			.build(),
+		handleSetGamePause
 	);
 }
 

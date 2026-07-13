@@ -1,13 +1,9 @@
 # VCMI Full MCP Support — Implementation Plan
 
-Status: written 2026-07-13, based on branch `mcp` (HEAD `53e2376a1`). **Phases 0 and 1 implemented
-2026-07-14** (ToolContext/Serializers refactor; EventJournal/RequestTracker/QueryRegistry/
-JournalVisitor; the `handlePack` hook; `get_events`/`wait_for_event`/`get_pending_queries`/
-`answer_query`; existing 6 action tools retrofitted with the wait+envelope). Verified: full
-project builds and links with `ENABLE_MCP_SERVER=ON`; a live session (headless VCMI under Xvfb)
-confirmed the MCP HTTP server starts and answers real JSON-RPC requests. Phases 2-6 (read
-completeness, remaining adventure actions, battle, polish, lobby) are still open - see the
-phase table below.
+Status: written 2026-07-13, based on branch `mcp` (HEAD `53e2376a1`). **All phases (0-6)
+implemented as of 2026-07-14** - see the phase table in section 14 for what each one covers and
+its one open caveat (GUI dialog dismissal, deliberately deferred - see the note under phase 5).
+User-facing docs: [`docs/developers/MCP_Server.md`](../../docs/developers/MCP_Server.md).
 
 Goal: an LLM connected via MCP can **fully control the game and read all information a human
 player of this client could see** — adventure map, towns, heroes, armies, artifacts, trade,
@@ -451,30 +447,34 @@ Small `toJson` visitors per **EVT** pack (section 6) live next to `EventJournal`
 
 ---
 
-## 9. Tool catalog (target API surface)
+## 9. Tool catalog (as implemented)
 
-~45 tools, grouped. (§ = already exists, will be refactored/extended.)
+~56 tools, all implemented as of 2026-07-14, grouped by file:
 
-- **Meta/session**: `get_game_state`§, `get_events`, `wait_for_event`, `get_pending_queries`,
-  `answer_query`, `get_statistics`, `save_game`, `send_chat_message`, `set_game_pause`,
-  `execute_command`§ (debug), `end_turn`§
-- **Reading map & players**: `get_player_info`§, `get_map_content`§ (add filters/paging),
-  `get_tiles` (region; replaces `get_visible_tiles`§), `get_object_details` (any object,
-  type-dispatched), `get_hero_details`§, `get_town_details`§, `get_hero_path`, `get_quests`,
-  `get_market_info`, `get_tavern_heroes`, `get_battle_state`§
-- **Static data**: resources `vcmi://config`§(tool now), `vcmi://creatures`§, `vcmi://artifacts`§,
-  `vcmi://spells`§, `vcmi://skills`§, + `list_buildings`, `list_hero_types`
-- **Hero actions**: `move_hero`§, `cast_adventure_spell`, `dig`, `dismiss_hero`§,
-  `castle_gate_teleport`, `set_formation`, `set_tactics`
-- **Army**: `swap_stacks`, `merge_stacks`, `split_stack`, `split_stack_evenly`,
+- **Meta/session** (`QueryTools.cpp`): `get_game_state`, `get_events`, `wait_for_event`,
+  `get_pending_queries`, `answer_query`, `get_statistics`, `save_game`, `send_chat_message`,
+  `set_game_pause`, `execute_command` (debug), `end_turn`
+- **Reading map & players** (`InfoTools.cpp` + `AdventureInfoTools.cpp`): `get_player_info`,
+  `get_map_content`, `get_tiles` (region, replaces the old full-map `get_visible_tiles`),
+  `get_object_details` (any object, type-dispatched), `get_hero_details`, `get_town_details`,
+  `get_hero_path`, `get_quests`, `get_market_info`, `get_tavern_heroes`, `get_battle_state`
+- **Static data** (`InfoTools.cpp` + `AdventureInfoTools.cpp`; plain tools, not MCP resources -
+  see phase 6 leftovers): `get_config`, `list_creatures`, `list_artifacts`, `list_spells`,
+  `list_skills`, `list_buildings`, `list_hero_types`
+- **Hero actions** (`ActionTools.cpp`): `move_hero`, `cast_adventure_spell`, `dig`,
+  `dismiss_hero`, `castle_gate_teleport`, `set_formation`, `set_tactics`
+- **Army** (`ArmyTools.cpp`): `swap_stacks`, `merge_stacks`, `split_stack`, `split_stack_evenly`,
   `merge_all_stacks`, `rebalance_stacks`, `move_army`, `dismiss_creatures`, `upgrade_creatures`
-- **Artifacts**: `move_artifact`, `transfer_artifacts`, `assemble_artifact`, `buy_artifact`,
-  `sort_backpack`, `manage_artifact_costume`
-- **Town**: `build_building`§, `visit_town_building`, `recruit_creatures`§, `hire_hero`,
-  `swap_garrison_hero`, `research_spell`, `rename_town`, `build_boat`, `trade`
-- **Battle**: `battle_move`, `battle_attack`, `battle_shoot`, `battle_wait`, `battle_defend`,
-  `battle_cast_spell`, `battle_catapult`, `battle_heal`, `battle_retreat`, `battle_surrender`,
-  `battle_end_tactics`
+- **Artifacts** (`ArtifactTools.cpp`): `move_artifact`, `transfer_artifacts`,
+  `assemble_artifact`, `buy_artifact`, `sort_backpack`, `manage_artifact_costume`
+- **Town** (`TownTools.cpp`): `build_building`, `visit_town_building`, `recruit_creatures`,
+  `hire_hero`, `swap_garrison_hero`, `research_spell`, `rename_town`, `build_boat`, `trade`
+- **Battle** (`BattleTools.cpp`): `battle_move`, `battle_attack`, `battle_shoot`, `battle_wait`,
+  `battle_defend`, `battle_cast_spell` (hero-cast only), `battle_catapult`, `battle_heal`,
+  `battle_retreat`, `battle_surrender`, `battle_end_tactics`
+- **Lobby** (`LobbyTools.cpp`, fire-and-forget - see phase 6 note): `lobby_get_state`,
+  `lobby_list_maps`, `lobby_select_map`, `lobby_claim_player`, `lobby_set_player_option`,
+  `lobby_set_difficulty`, `lobby_start_game`, `load_game`, `restart_game`, `return_to_menu`
 
 Conventions:
 - Every tool: optional `player`; instance IDs are `ObjectInstanceID.getNum()`; coordinates
@@ -573,13 +573,26 @@ manually or via `--donotstartserver`/CLI options.
 | **2. Read completeness** ✅ | `AdventureInfoTools.cpp` + `Serializers` additions for tiles/buildings/hero types; tools `get_tiles`, `get_object_details`, `get_hero_path`, `get_market_info`, `get_tavern_heroes`, `get_quests`, `list_buildings`, `list_hero_types` | LLM can plan like a human player. Static data still exposed as regular tools rather than MCP resources - not yet done |
 | **3. Action completeness (adventure)** ✅ | `ArmyTools.cpp` (swap/merge/split/rebalance/move stacks, dismiss, upgrade), `ArtifactTools.cpp` (move/transfer/assemble/buy/sort/costume), `TownTools.cpp` (visit building/hire hero/swap garrison/research spell/rename/build boat/trade), hero misc actions added to `ActionTools.cpp` (cast spell/dig/castle gate/formation/tactics) | full adventure-map control, ~30 new action tools |
 | **4. Battle** ✅ | `BattleTools.cpp`: battle_move/attack/shoot/wait/defend/heal/catapult/cast_spell(hero-only)/retreat/surrender/end_tactics, tactics-phase dispatch via `battleMakeTacticAction` | battle control for all common actions; creature-ability casts (`makeCreatureSpellcast`/`makeWalkAndCast`) and richer `get_battle_state` (reachability/damage estimates/turn queue) still open |
-| **5. Polish** | GUI dialog dismissal on external answer, `get_statistics`, docs page (`docs/developers/MCP_Server.md`) with example client configs (Claude Desktop/Code), tool description pass | mixed human+LLM usable |
-| **6. Optional** | Lobby control (section 13), campaign support checks, MCP resource templates for per-object URIs | game-session automation |
+| **5. Polish** ✅⚠️ | `get_statistics` (reuses `StatisticDataSet::serializeJson` via a plain `JsonSerializer`, delivered inline in the action envelope's `events`); docs page `docs/developers/MCP_Server.md` with Claude Desktop/Code configs; tool description pass. GUI dialog dismissal was investigated and **deliberately not implemented** - see below | mixed human+LLM usable, with the GUI-sync caveat documented |
+| **6. Optional** ✅ | `LobbyTools.cpp`: `lobby_get_state`, `lobby_list_maps`, `lobby_select_map`, `lobby_claim_player`, `lobby_set_player_option`, `lobby_set_difficulty`, `lobby_start_game`, `load_game`, `restart_game`, `return_to_menu`. Lobby packs don't go through the `PackageApplied`/`RequestTracker` pipeline (that's wired to `CPackForClient`, not `CPackForLobby`), so these fire-and-forget and rely on a follow-up `lobby_get_state` to confirm the result - documented as such. Campaign support and MCP resource templates (vs. plain tools) remain undone - low value relative to effort | game-session automation |
 
-Phases 2-4 verified: full project builds and links with `ENABLE_MCP_SERVER=ON` (2026-07-14). Not yet
-live-tested end-to-end (needs a running game with a human-controlled interface) - the earlier
-Phase 0/1 live smoke test only exercised the read/journal path before the environment's AI-setup
-crash (unrelated to MCP, see git history).
+**GUI dialog dismissal - why it was skipped:** the plan originally scoped this as "~20 lines in
+CPlayerInterface". On closer inspection (`CPlayerInterface::showGarrisonDialog` and friends), several
+dialog windows re-send a server request on close as part of their own callback wiring (e.g.
+`CGarrisonWindow`'s `quit` callback calls `cb->selectionMade(0, queryID)`). Programmatically closing
+such a window after MCP has already answered its query would fire a second, stale request for an
+already-closed query - a real correctness bug, not a cosmetic one - and the dialog/window stack has
+its own serialization invariants (`dialogs` queue, `showingDialog->isBusy()`) that external closing
+could desync. Given the fix is riskier than originally scoped and touches the core human-play GUI
+path, it was left as a documented limitation (see `docs/developers/MCP_Server.md`) rather than risk
+introducing bugs into `client/CPlayerInterface.cpp` to fix a cosmetic desync that doesn't affect MCP's
+own correctness (the server-side answer is unaffected either way).
+
+All phases (0-6) verified: full project builds and links with `ENABLE_MCP_SERVER=ON` (2026-07-14).
+Phases 0-1 got a live smoke test (headless VCMI under Xvfb, confirmed the MCP HTTP server starts and
+answers real JSON-RPC requests) before an unrelated pre-existing engine crash during AI setup cut the
+session short. Phases 2-6 are build/link-verified only - a full live playthrough exercising the new
+action/battle/lobby tools has not been done and would be the natural next verification step.
 
 Each phase compiles green with `ENABLE_MCP_SERVER` on and off, and ends with the manual test
 script (section 15) passing.

@@ -229,6 +229,7 @@ set(vcmiclientcommon_SRCS
 	mcp/TownTools.cpp
 	mcp/BattleTools.cpp
 	mcp/QueryTools.cpp
+	mcp/LobbyTools.cpp
 	mcp/Serializers.cpp
 	mcp/ToolContext.cpp
 	mcp/EventJournal.cpp
@@ -495,6 +496,7 @@ set(vcmiclientcommon_HEADERS
 	mcp/TownTools.h
 	mcp/BattleTools.h
 	mcp/QueryTools.h
+	mcp/LobbyTools.h
 	mcp/Serializers.h
 	mcp/ToolContext.h
 	mcp/EventJournal.h
