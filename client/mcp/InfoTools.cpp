@@ -40,6 +40,7 @@
 #include "../../lib/battle/IBattleState.h"
 #include "../../lib/battle/CBattleInfoEssentials.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
+#include "../../lib/battle/CObstacleInstance.h"
 #include "../../lib/battle/Unit.h"
 
 #ifdef ENABLE_MCP_SERVER
@@ -115,40 +116,6 @@ namespace
 		result["heroes"] = JsonNode(cb.howManyHeroes(false));
 		result["status"] = JsonNode(static_cast<int>(cb.getPlayerStatus(color, false)));
 		return result;
-	}
-
-	JsonNode getVisibleTiles()
-	{
-		auto & cb = mcptool::activeCallback();
-		auto player = cb.getPlayerID();
-		if(!player)
-			throw std::runtime_error("No player");
-
-		auto team = cb.getPlayerTeam(*player);
-		if(!team)
-			throw std::runtime_error("No team");
-
-		auto & map = GAME->server().client->gameState().getMap();
-		auto & fow = team->fogOfWarMap;
-		JsonNode tiles;
-		for(int z = 0; z < map.levels(); z++)
-		{
-			for(int x = 0; x < map.width; x++)
-			{
-				for(int y = 0; y < map.height; y++)
-				{
-					if(fow[int3(x, y, z)])
-					{
-						JsonNode tile;
-						tile["x"] = JsonNode(x);
-						tile["y"] = JsonNode(y);
-						tile["z"] = JsonNode(z);
-						tiles.Vector().push_back(tile);
-					}
-				}
-			}
-		}
-		return tiles;
 	}
 
 	JsonNode getMapContent()
@@ -290,11 +257,105 @@ namespace
 			result["location"] = locJson;
 		}
 
+		auto mySide = battleCB->battleGetMySide();
+		result["mySide"] = JsonNode(static_cast<int>(mySide));
+		result["tacticsDistance"] = JsonNode(static_cast<int>(battleCB->battleTacticDist()));
+		if(battleCB->battleTacticDist() > 0)
+			result["tacticsSide"] = JsonNode(static_cast<int>(battleCB->battleGetTacticsSide()));
+		result["canFlee"] = JsonNode(battleCB->battleCanFlee());
+		result["surrenderCost"] = JsonNode(battleCB->battleGetSurrenderCost());
+
 		JsonNode units;
 		auto allUnits = battleCB->battleGetAllUnits(false);
 		for(auto * u : allUnits)
-			units.Vector().push_back(battleUnitToJson(u));
+		{
+			JsonNode entry = battleUnitToJson(u);
+			if(u->alive() && !u->isTurret())
+			{
+				entry["canShootNow"] = JsonNode(battleCB->battleCanShoot(u));
+				JsonNode reachable;
+				for(auto & hex : battleCB->battleGetAvailableHexes(u, false))
+					reachable.Vector().push_back(JsonNode(hex.toInt()));
+				entry["reachableHexes"] = reachable;
+			}
+			units.Vector().push_back(entry);
+		}
 		result["units"] = units;
+
+		// Next few turns of the initiative queue, so the LLM can plan around who acts when.
+		std::vector<battle::Units> turnOrder;
+		battleCB->battleGetTurnOrder(turnOrder, 24, 2);
+		JsonNode queue;
+		for(auto & turn : turnOrder)
+		{
+			JsonNode turnJson;
+			for(auto * u : turn)
+				turnJson.Vector().push_back(JsonNode(static_cast<int>(u->unitId())));
+			queue.Vector().push_back(turnJson);
+		}
+		result["turnOrder"] = queue;
+
+		JsonNode obstacles;
+		for(auto & obstacle : battleCB->battleGetAllObstacles(mySide))
+		{
+			JsonNode o;
+			o["type"] = JsonNode(static_cast<int>(obstacle->obstacleType));
+			JsonNode blocked;
+			for(auto & hex : obstacle->getBlockedTiles())
+				blocked.Vector().push_back(JsonNode(hex.toInt()));
+			o["blockedHexes"] = blocked;
+			o["stopsMovement"] = JsonNode(obstacle->stopsMovement());
+			o["triggersEffects"] = JsonNode(obstacle->triggersEffects());
+			obstacles.Vector().push_back(o);
+		}
+		result["obstacles"] = obstacles;
+
+		// For the unit whose turn it is: what can it actually do to each living enemy right now.
+		if(active && !active->isTurret())
+		{
+			auto availableHexes = battleCB->battleGetAvailableHexes(active, false);
+			JsonNode targets;
+			for(auto * enemy : allUnits)
+			{
+				if(!enemy->alive() || enemy->unitSide() == active->unitSide() || enemy->isTurret())
+					continue;
+
+				JsonNode target;
+				target["unitId"] = JsonNode(static_cast<int>(enemy->unitId()));
+				target["canShoot"] = JsonNode(battleCB->battleCanShoot(active, enemy->getPosition()));
+
+				// Hexes adjacent to the enemy that the active unit stands on or can reach -
+				// directly usable as battle_attack's attackFromHex.
+				JsonNode attackFrom;
+				BattleHexArray seen;
+				for(auto & enemyHex : enemy->getHexes())
+				{
+					for(auto & neighbour : BattleHexArray::getNeighbouringTiles(enemyHex))
+					{
+						if(seen.contains(neighbour))
+							continue;
+						if(neighbour == active->getPosition() || availableHexes.contains(neighbour))
+						{
+							seen.insert(neighbour);
+							attackFrom.Vector().push_back(JsonNode(neighbour.toInt()));
+						}
+					}
+				}
+				target["meleeAttackFromHexes"] = attackFrom;
+
+				DamageEstimation retaliation;
+				auto estimation = battleCB->battleEstimateDamage(active, enemy, active->getPosition(), &retaliation);
+				target["damageMin"] = JsonNode(estimation.damage.min);
+				target["damageMax"] = JsonNode(estimation.damage.max);
+				target["killsMin"] = JsonNode(estimation.kills.min);
+				target["killsMax"] = JsonNode(estimation.kills.max);
+				target["retaliationDamageMin"] = JsonNode(retaliation.damage.min);
+				target["retaliationDamageMax"] = JsonNode(retaliation.damage.max);
+
+				targets.Vector().push_back(target);
+			}
+			result["activeUnitTargets"] = targets;
+		}
 
 		auto * town = battleCB->battleGetDefendedTown();
 		if(town)
@@ -357,13 +418,6 @@ void registerInfoTools(mcp::server * srv)
 	);
 
 	srv->register_tool(
-		mcp::tool_builder("get_visible_tiles")
-			.with_description("Get all tiles visible to current player")
-			.build(),
-		[](const mcp::json &, const std::string &) { return mcptool::readTool(getVisibleTiles); }
-	);
-
-	srv->register_tool(
 		mcp::tool_builder("get_map_content")
 			.with_description("Get all visible map content (heroes, towns, objects)")
 			.build(),
@@ -423,7 +477,7 @@ void registerInfoTools(mcp::server * srv)
 
 	srv->register_tool(
 		mcp::tool_builder("get_battle_state")
-			.with_description("Get current battle state")
+			.with_description("Get full current battle state: units (with per-unit reachableHexes and canShootNow), initiative turnOrder for the next turns, obstacles, siege walls, tactics info, canFlee/surrenderCost, and for the active unit an activeUnitTargets analysis per living enemy (canShoot, meleeAttackFromHexes usable directly as battle_attack's attackFromHex, damage/kills estimate and expected retaliation)")
 			.build(),
 		[](const mcp::json &, const std::string &) { return mcptool::readTool(getBattleState); }
 	);

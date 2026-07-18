@@ -46,12 +46,19 @@ public:
 
 	void visitSystemMessage(SystemMessage & pack) override;
 	void visitPlayerBlocked(PlayerBlocked & pack) override;
+	void visitPlayerCheated(PlayerCheated & pack) override;
 	void visitPlayerStartsTurn(PlayerStartsTurn & pack) override;
 	void visitPlayerEndsTurn(PlayerEndsTurn & pack) override;
 	void visitPlayerEndsGame(PlayerEndsGame & pack) override;
 	void visitDaysWithoutTown(DaysWithoutTown & pack) override;
+	void visitSetResources(SetResources & pack) override;
 	void visitSetPrimarySkill(SetPrimarySkill & pack) override;
+	void visitSetSecSkill(SetSecSkill & pack) override;
 	void visitSetHeroExperience(SetHeroExperience & pack) override;
+	void visitGiveStackExperience(GiveStackExperience & pack) override;
+	void visitChangeSpells(ChangeSpells & pack) override;
+	void visitSetResearchedSpells(SetResearchedSpells & pack) override;
+	void visitFoWChange(FoWChange & pack) override;
 	void visitHeroVisitCastle(HeroVisitCastle & pack) override;
 	void visitGiveBonus(GiveBonus & pack) override;
 	void visitRemoveBonus(RemoveBonus & pack) override;
@@ -76,6 +83,7 @@ public:
 	void visitBattleSetActiveStack(BattleSetActiveStack & pack) override;
 	void visitBattleCancelled(BattleCancelled & pack) override;
 	void visitBattleLogMessage(BattleLogMessage & pack) override;
+	void visitBattleStackMoved(BattleStackMoved & pack) override;
 	void visitBattleAttack(BattleAttack & pack) override;
 	void visitBattleSpellCast(BattleSpellCast & pack) override;
 	void visitStacksInjured(StacksInjured & pack) override;

@@ -182,6 +182,15 @@ void JournalVisitor::visitPlayerBlocked(PlayerBlocked & pack)
 	journal.push("playerBlocked", data);
 }
 
+void JournalVisitor::visitPlayerCheated(PlayerCheated & pack)
+{
+	JsonNode data;
+	data["player"] = JsonNode(pack.player.toString());
+	data["losingCheat"] = JsonNode(pack.losingCheatCode);
+	data["winningCheat"] = JsonNode(pack.winningCheatCode);
+	journal.push("playerCheated", data);
+}
+
 void JournalVisitor::visitPlayerStartsTurn(PlayerStartsTurn & pack)
 {
 	// Auto-answered by CPlayerInterface::acceptTurn - not a query an MCP client needs to answer.
@@ -214,6 +223,19 @@ void JournalVisitor::visitDaysWithoutTown(DaysWithoutTown & pack)
 	journal.push("daysWithoutTown", data);
 }
 
+void JournalVisitor::visitSetResources(SetResources & pack)
+{
+	JsonNode data;
+	data["player"] = JsonNode(pack.player.toString());
+	data["mode"] = JsonNode(static_cast<int>(pack.mode));
+	JsonNode resources;
+	for(int i = 0; i < GameResID::COUNT; i++)
+		if(pack.res[GameResID(i)] != 0)
+			resources[GameResID::encode(i)] = JsonNode(static_cast<si64>(pack.res[GameResID(i)]));
+	data["resources"] = resources;
+	journal.push("resourcesChanged", data);
+}
+
 void JournalVisitor::visitSetPrimarySkill(SetPrimarySkill & pack)
 {
 	JsonNode data;
@@ -231,6 +253,67 @@ void JournalVisitor::visitSetHeroExperience(SetHeroExperience & pack)
 	data["value"] = JsonNode(static_cast<si64>(pack.val));
 	data["mode"] = JsonNode(static_cast<int>(pack.mode));
 	journal.push("heroExperienceChanged", data);
+}
+
+void JournalVisitor::visitSetSecSkill(SetSecSkill & pack)
+{
+	JsonNode data;
+	data["heroId"] = JsonNode(pack.id.getNum());
+	data["skill"] = JsonNode(pack.which.getNum());
+	data["value"] = JsonNode(static_cast<int>(pack.val));
+	data["mode"] = JsonNode(static_cast<int>(pack.mode));
+	journal.push("heroSecondarySkillChanged", data);
+}
+
+void JournalVisitor::visitGiveStackExperience(GiveStackExperience & pack)
+{
+	JsonNode data;
+	data["objectId"] = JsonNode(pack.id.getNum());
+	journal.push("stackExperienceChanged", data);
+}
+
+void JournalVisitor::visitChangeSpells(ChangeSpells & pack)
+{
+	JsonNode data;
+	data["heroId"] = JsonNode(pack.hid.getNum());
+	data["learned"] = JsonNode(pack.learn != 0);
+	JsonNode spells;
+	for(auto & sid : pack.spells)
+		spells.Vector().push_back(JsonNode(sid.getNum()));
+	data["spells"] = spells;
+	journal.push("heroSpellsChanged", data);
+}
+
+void JournalVisitor::visitSetResearchedSpells(SetResearchedSpells & pack)
+{
+	JsonNode data;
+	data["townId"] = JsonNode(pack.tid.getNum());
+	data["level"] = JsonNode(static_cast<int>(pack.level));
+	data["accepted"] = JsonNode(pack.accepted);
+	journal.push("spellResearch", data);
+}
+
+void JournalVisitor::visitFoWChange(FoWChange & pack)
+{
+	// Deliberately aggregated (count + bounding box): a single Cartographer or big reveal can
+	// touch thousands of tiles - the exact list is readable via get_tiles when it matters.
+	JsonNode data;
+	data["player"] = JsonNode(pack.player.toString());
+	data["revealed"] = JsonNode(pack.mode == ETileVisibility::REVEALED);
+	data["tileCount"] = JsonNode(static_cast<si64>(pack.tiles.size()));
+	if(!pack.tiles.empty())
+	{
+		int3 lo = *pack.tiles.begin();
+		int3 hi = lo;
+		for(auto & t : pack.tiles)
+		{
+			lo.x = std::min(lo.x, t.x); lo.y = std::min(lo.y, t.y); lo.z = std::min(lo.z, t.z);
+			hi.x = std::max(hi.x, t.x); hi.y = std::max(hi.y, t.y); hi.z = std::max(hi.z, t.z);
+		}
+		data["boundsMin"] = int3ToJson(lo);
+		data["boundsMax"] = int3ToJson(hi);
+	}
+	journal.push("fogOfWarChanged", data);
 }
 
 void JournalVisitor::visitHeroVisitCastle(HeroVisitCastle & pack)
@@ -443,6 +526,18 @@ void JournalVisitor::visitBattleLogMessage(BattleLogMessage & pack)
 		lines.Vector().push_back(JsonNode(line.toString()));
 	data["lines"] = lines;
 	journal.push("battleLog", data);
+}
+
+void JournalVisitor::visitBattleStackMoved(BattleStackMoved & pack)
+{
+	JsonNode data;
+	data["battleId"] = JsonNode(pack.battleID.getNum());
+	data["unitId"] = JsonNode(static_cast<int>(pack.stack));
+	if(!pack.tilesToMove.empty())
+		data["destinationHex"] = JsonNode(pack.tilesToMove.back().toInt());
+	data["distance"] = JsonNode(pack.distance);
+	data["teleporting"] = JsonNode(pack.teleporting);
+	journal.push("battleUnitMoved", data);
 }
 
 void JournalVisitor::visitBattleAttack(BattleAttack & pack)

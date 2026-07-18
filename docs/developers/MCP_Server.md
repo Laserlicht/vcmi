@@ -110,8 +110,11 @@ response → `answer_query` for anything that opened → repeat → `end_turn` �
   GUI for a given session, not both at once.
 - **Creature-ability spell casts in battle** (as opposed to hero spellcasting) aren't wired up yet
   - only hero-cast combat spells are supported by `battle_cast_spell`.
-- **`get_battle_state`** does not yet report reachable hexes, damage estimates, or turn order -
-  only current unit/battlefield state.
+- **`get_battle_state`'s `meleeAttackFromHexes` is a geometric approximation** (hexes adjacent to
+  the target that the attacker occupies or can reach). For double-wide attackers the engine's
+  exact body-placement rules may reject an edge case the list includes - the server validates
+  every attack, so a rejected `battle_attack` simply returns `status: "rejected"`; pick another
+  hex from the list.
 - Lobby tools (`lobby_*`, `load_game`, `restart_game`, `return_to_menu`) fire-and-forget rather
   than waiting for a server acknowledgement like in-game action tools do, since pre-game lobby
   packs don't go through the same request/acknowledgement pipeline. Confirm the effect with

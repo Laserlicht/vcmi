@@ -363,6 +363,10 @@ JsonNode battleUnitToJson(const battle::Unit * u)
 	entry["availableHealth"] = JsonNode(static_cast<int>(u->getAvailableHealth()));
 	entry["totalHealth"] = JsonNode(static_cast<int>(u->getTotalHealth()));
 	entry["firstHPleft"] = JsonNode(u->getFirstHPleft());
+	entry["speed"] = JsonNode(static_cast<int>(u->getMovementRange()));
+	entry["canMove"] = JsonNode(u->canMove());
+	entry["willMoveThisTurn"] = JsonNode(u->willMove());
+	entry["waited"] = JsonNode(u->waited());
 	auto * creature = u->unitType();
 	if(creature)
 	{

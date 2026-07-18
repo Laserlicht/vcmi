@@ -101,6 +101,13 @@ namespace
 			// Removed proactively: re-sending an answer for an already-closed query is harmless
 			// (server rejects it), while leaving a stale entry around after a valid answer is not.
 			ENGINE->mcpServer().queryRegistry().remove(queryId);
+
+			JsonNode answered;
+			answered["queryId"] = JsonNode(queryId);
+			if(reply.has_value())
+				answered["reply"] = JsonNode(*reply);
+			ENGINE->mcpServer().journal().push("queryAnswered", answered);
+
 			cb.sendQueryReply(reply, QueryID(queryId));
 		});
 	}

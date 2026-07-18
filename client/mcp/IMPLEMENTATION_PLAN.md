@@ -124,33 +124,35 @@ VCMI already contains everything needed — we only surface it:
   it from the main thread. Instead the MCP action flow is:
 
 ```
-MCP worker thread                     main thread                network thread
-────────────────────                  ─────────────────────      ─────────────────────
-validate params (shared lock)
+MCP worker thread                        main thread                network thread
+────────────────────                     ─────────────────────      ─────────────────────
+acquire action lock, tracker.beginWait()
 markerSeq = journal.currentSeq()
-dispatchMainThread(action) ─────────► action runs:
-   … blocks on future …                 cb->something(…)
-                                        → sendRequest → returns requestID
-                                        promise.set_value(requestID)
-requestID = future.get(timeout)
-tracker.waitFor(requestID, timeout) ◄─────────────────────────── PackageApplied{requestID}
-                                                                 (via onPackApplied hook)
+dispatchMainThread(action) ────────────► try { action:
+   … tracker.waitResult(timeout) …          cb->something(…) → sendRequest
+                                         } catch → tracker.reportLocalError(msg)
+                     ◄─────────────────────────────────────────── PackageApplied
+                                                                  → tracker.reportApplied(result)
 collect journal[markerSeq..now]
-return { success, requestId, events[...], pendingQueries[...] }
+return { status, error?, events[...], pendingQueries[...] }
 ```
 
-- **`RequestTracker`**: `std::mutex` + `condition_variable` + `map<requestID, bool result>`,
-  fed by the `PackageApplied` visitor. `waitFor(id, timeout)` returns
-  `applied(bool result) | timeout`.
+- **`RequestTracker`** (as implemented): no per-requestID map — VCMI never hands the requestID
+  back through `CCallback`, so the tracker instead serializes MCP actions (one in flight at a
+  time via an action lock) and treats the *next* `PackageApplied` after `beginWait()` as the
+  answer. `waitResult(timeout)` returns `{applied, errorMessage} | timeout`; `errorMessage` is
+  set when the dispatched action threw a validation error before any request was sent.
 - **Timeout behavior** (`mcp.requestTimeoutMs`, default 10 000): on timeout the tool returns
-  `{"status": "pending", "requestId": N, "eventsSince": markerSeq}` — the LLM continues via
-  `get_events` / `get_pending_queries`. This matters because some actions legitimately do not
-  complete until *other* things happen (e.g. `MoveHero` onto a monster starts a battle; the
-  pack is realized, but the *interaction* continues via a `Query`).
+  `{"status": "pending", ...}` with whatever events/queries accumulated so far — the LLM
+  continues via `get_events` / `get_pending_queries`. This matters because some actions
+  legitimately do not complete until *other* things happen (e.g. `MoveHero` onto a monster
+  starts a battle; the pack is realized, but the *interaction* continues via a `Query`).
 - **Never wait while holding `CGameState::mutex`** (deadlock: pack application takes a unique
   lock).
-- Tools that trigger a *response pack* instead of a query (only `RequestStatistic` →
-  `ResponseStatistic`) wait on the journal for that pack type instead.
+- Tools that trigger a *response pack* (only `RequestStatistic` → `ResponseStatistic`) need no
+  special handling in practice: the server sends `ResponseStatistic` while applying the request,
+  i.e. before its `PackageApplied`, so the ordinary wait already captures the `statisticsReady`
+  journal entry in the returned delta.
 - Additionally a generic **`wait_for_event`** tool (long-poll): blocks the MCP worker until an
   event matching a filter (e.g. `yourTurn`, `battleUnitActive`, `queryOpened`, any) arrives or
   timeout expires. This is how the LLM idles while AI players move, without busy-polling.
@@ -341,9 +343,19 @@ Since the LLM can always re-read state via tools, most packs need only a **journ
 | `BattleUpdateGateState` | drawbridge state | state | – |
 
 **Journal design**: fixed-size ring (default 4096 entries, `mcp.journalSize`), monotonically
-increasing `seq`, each entry `{seq, day, battleRound?, type, payload}`. `get_events {sinceSeq?,
+increasing `seq`, each entry `{seq, type, data}` (the draft's `day`/`battleRound` fields were
+not implemented - the payload carries ids the LLM can resolve instead). `get_events {sinceSeq?,
 types?[], limit?}` returns entries + `latestSeq`. Action tools embed the delta slice
 automatically, so in the common case the LLM never calls `get_events` explicitly.
+
+**Coverage audit (2026-07-18)**: `JournalVisitor` now implements every pack this table marks
+EVT/QRY/REQ, including the batch added after the audit found them missing (`PlayerCheated`,
+`SetResources`, `SetSecSkill`, `GiveStackExperience`, `ChangeSpells`, `SetResearchedSpells`,
+`FoWChange` as an aggregated count+bounding-box event, `BattleStackMoved`). Two deliberate
+simplifications remain: garrison/artifact operation packs are state-only with **no** aggregated
+`armyChanged`/`artifactsChanged` event (the envelope's post-action re-read covers the use case;
+true multi-pack aggregation isn't worth the complexity), and `TurnTimeUpdate`/`SetMana`/
+`SetMovePoints` stay state-only as planned.
 
 ---
 
@@ -367,19 +379,36 @@ through `CBattleCallback`, main-thread dispatched):
 | `battle_retreat` / `battle_surrender` | `makeRetreat`/`makeSurrender` | – (+ `get_battle_state` exposes surrender cost) |
 | `battle_end_tactics` | `makeEndOFTacticPhase` | – (tactic-phase moves use `battle_move` via `battleMakeTacticAction`) |
 
-Read support in `get_battle_state` (extends existing tool, all from `CPlayerBattleCallback`):
-per-unit **reachable hexes** (`battleGetAvailableHexes`), **attackable targets** with damage
-estimate (`battleEstimateDamage`), shooting permission/penalties, spell legality
-(`battleCanCastThisSpell`), wall states, obstacle list, tactics info, hex distance metadata.
-Waiting: after a battle action, wait until `PackageApplied` **and** the follow-up
-`BattleSetActiveStack`/`BattleResult` appears, then return the journal delta (attack results,
-log lines) — this gives the LLM a natural "action → outcome" loop.
+Read support in `get_battle_state` ✅ (2026-07-18, all from `CPlayerBattleCallback`): per living
+unit **`reachableHexes`** (`battleGetAvailableHexes`) + `canShootNow` + current
+speed/canMove/waited flags; **`turnOrder`** for the next two turns (`battleGetTurnOrder`);
+**`obstacles`** with blocked hexes (perspective-filtered, so hidden spell obstacles stay
+hidden); `canFlee`/`surrenderCost`/tactics info; and for the active unit an
+**`activeUnitTargets`** entry per living enemy: `canShoot`, `meleeAttackFromHexes` (adjacency ∩
+reachability - directly usable as `battle_attack`'s `attackFromHex`; approximate for double-wide
+attackers, server validates), damage/kills estimate and expected retaliation
+(`battleEstimateDamage`). Not exposed: per-spell legality (`battleCanCastThisSpell`) - the LLM
+casts and gets a rejection instead.
+Waiting ✅ (2026-07-18): after a battle action is acknowledged, `actionTool` additionally waits
+(short grace window) for the follow-up `battleUnitActive`/`battleResult`/`battleEnded` journal
+event, so the response envelope closes the "action → outcome → whose turn next" loop in one
+round trip.
 `makeSurrenderRetreatDecision` (auto-retreat prompt) surfaces as a **QRY** if it ever reaches a
 human interface.
 
 ---
 
 ## 8. JSON serialization: class table
+
+> **Note (2026-07-18):** the ✅/🔶/❌ statuses below are frozen at the pre-implementation draft
+> and no longer reflect the code — ground truth is `Serializers.{h,cpp}` plus the inline
+> serialization in the tool files. Since the draft: `TerrainTile`, `CBuilding`, `HeroType`,
+> `Component`, dwelling creatures, market info, quest entries, path nodes, and tavern heroes
+> were implemented; the `Ctx` parameter idea was dropped (free functions are enough, visibility
+> is enforced by fetching objects through the player-scoped callback before serializing).
+> Rows still genuinely open: richer battle-unit stats/effects, `CCommanderInstance`,
+> `CObstacleInstance`, `Bonus` descriptions, `TurnTimerInfo`, and the `get_battle_state`
+> extensions listed in §7.
 
 One overload set `JsonNode toJson(const T *, const Ctx &)` in `client/mcp/Serializers.{h,cpp}`
 (split into `SerializersEntities`, `SerializersMap`, `SerializersBattle` if size demands).
@@ -449,7 +478,8 @@ Small `toJson` visitors per **EVT** pack (section 6) live next to `EventJournal`
 
 ## 9. Tool catalog (as implemented)
 
-~56 tools, all implemented as of 2026-07-14, grouped by file:
+84 tools, all implemented (audited against the registered `tool_builder` calls 2026-07-18),
+grouped by file:
 
 - **Meta/session** (`QueryTools.cpp`): `get_game_state`, `get_events`, `wait_for_event`,
   `get_pending_queries`, `answer_query`, `get_statistics`, `save_game`, `send_chat_message`,
@@ -476,11 +506,16 @@ Small `toJson` visitors per **EVT** pack (section 6) live next to `EventJournal`
   `lobby_list_maps`, `lobby_select_map`, `lobby_claim_player`, `lobby_set_player_option`,
   `lobby_set_difficulty`, `lobby_start_game`, `load_game`, `restart_game`, `return_to_menu`
 
-Conventions:
-- Every tool: optional `player`; instance IDs are `ObjectInstanceID.getNum()`; coordinates
-  `{x,y,z}`; enums accepted as name strings (parsed via existing `encode/decode` helpers).
+Conventions (as implemented - two deliberate deviations from the original draft):
+- Instance IDs are `ObjectInstanceID.getNum()`; coordinates `{x,y,z}`; player colors as name
+  strings; most other enums as numeric ids (deviation: the draft wanted name strings
+  everywhere - numeric ids match what the read tools return, so round-tripping is consistent).
+- No per-tool `player` parameter (deviation): every tool acts as the currently active local
+  player (`GAME->interface()`). In hotseat the active interface switches with the turn, so this
+  is almost always what's wanted; acting for a non-active player would be rejected server-side
+  anyway. Revisit only if true concurrent hotseat control becomes a requirement.
 - Action result envelope:
-  `{status: ok|rejected|pending, requestId, events: [...], pendingQueries: [...]}`.
+  `{status: ok|rejected|pending, error?: "...", events: [...], pendingQueries: [...]}`.
 - Errors → MCP tool errors with actionable message (unknown id, not your object, no game…).
 
 ## 10. File layout & code-quality rules
@@ -535,8 +570,12 @@ Changes **outside** `client/mcp/` (kept minimal, the full list):
 | `requestTimeoutMs` | 10000 | wait budget for action realization |
 | `eventWaitTimeoutMs` | 60000 | max long-poll duration of `wait_for_event` |
 | `journalSize` | 4096 | event ring size |
-| `allowCheats` | false | gate `send_chat_message` texts recognized as cheats (documentation-level guard; server decides anyway) |
-| `allowedPlayers` | [] (= all local) | restrict which local players MCP may act for |
+
+Two keys from the original draft were dropped rather than implemented: `allowCheats` (it would
+have been a documentation-level guard only - the server accepts cheat messages regardless, so a
+client-side toggle adds a false sense of control; `send_chat_message`'s description discloses
+the cheat capability instead) and `allowedPlayers` (meaningless while tools always act as the
+active local player - see the §9 conventions note on the dropped per-tool `player` parameter).
 
 ## 12. Threading & safety
 

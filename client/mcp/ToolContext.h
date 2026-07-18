@@ -10,6 +10,8 @@
 #pragma once
 
 #include <functional>
+#include <string>
+#include <vector>
 
 #ifdef ENABLE_MCP_SERVER
 #include <mcp_message.h>
@@ -65,7 +67,12 @@ mcp::json staticReadTool(const std::function<JsonNode()> & fn);
 /// Only one actionTool() invocation may be in flight at a time (enforced internally) since
 /// completion is detected via "next PackageApplied observed", not by request id - see
 /// RequestTracker for the reasoning. fn must perform exactly one CCallback call.
-mcp::json actionTool(const std::function<void()> & fn);
+///
+/// awaitEvents: optional journal event types to additionally wait for (briefly) after a
+/// successful acknowledgement, so the envelope includes the follow-up the caller will act on
+/// next - e.g. battle tools await the next "battleUnitActive"/"battleResult" so the LLM learns
+/// whose turn it is from the same response instead of needing a wait_for_event round trip.
+mcp::json actionTool(const std::function<void()> & fn, const std::vector<std::string> & awaitEvents = {});
 
 /// Runs fn on the main thread, catching and logging (never propagating) any exception - see the
 /// actionTool() comment for why letting one escape would crash the whole client. Use this for

@@ -85,7 +85,7 @@ void dispatchMainThreadSafe(const std::function<void()> & fn)
 	});
 }
 
-mcp::json actionTool(const std::function<void()> & fn)
+mcp::json actionTool(const std::function<void()> & fn, const std::vector<std::string> & awaitEvents)
 {
 	auto & mcp = ENGINE->mcpServer();
 
@@ -118,6 +118,12 @@ mcp::json actionTool(const std::function<void()> & fn)
 	if(timeoutMs <= 0)
 		timeoutMs = 10000;
 	auto outcome = mcp.requestTracker().waitResult(std::chrono::milliseconds(timeoutMs));
+
+	// Give the follow-up the caller cares about (e.g. the next battleUnitActive after a battle
+	// action) a short grace window to land in the envelope. waitFor returns immediately if a
+	// matching event already arrived since markerSeq.
+	if(outcome.has_value() && outcome->applied && !awaitEvents.empty())
+		mcp.journal().waitFor(markerSeq, awaitEvents, std::chrono::milliseconds(3000));
 
 	JsonNode envelope;
 	if(!outcome.has_value())

@@ -25,6 +25,12 @@
 
 namespace
 {
+	/// After a battle action is acknowledged, the interesting part is what comes next: either
+	/// another unit's turn or the battle's end. Awaiting these keeps the whole exchange in one
+	/// tool response instead of forcing a wait_for_event round trip per action.
+	const std::vector<std::string> afterUnitAction = {"battleUnitActive", "battleResult", "battleEnded", "battleCancelled"};
+	const std::vector<std::string> afterBattleEnd = {"battleResult", "battleEnded", "battleCancelled"};
+
 	std::shared_ptr<CPlayerBattleCallback> activeBattle(CCallback & cb, BattleID & outId)
 	{
 		auto battles = cb.getActiveBattles();
@@ -65,7 +71,7 @@ namespace
 			auto battleCB = activeBattle(cb, battleId);
 			auto * unit = requireUnit(*battleCB, unitId);
 			sendUnitAction(cb, *battleCB, battleId, BattleAction::makeMove(unit, BattleHex(static_cast<si16>(hex))));
-		});
+		}, afterUnitAction);
 	}
 
 	mcp::json handleBattleAttack(const mcp::json & params, const std::string &)
@@ -84,7 +90,7 @@ namespace
 			auto * target = requireUnit(*battleCB, targetUnitId);
 			auto action = BattleAction::makeMeleeAttack(unit, target, BattleHex(static_cast<si16>(attackFromHex)), returnAfterAttack);
 			sendUnitAction(cb, *battleCB, battleId, action);
-		});
+		}, afterUnitAction);
 	}
 
 	mcp::json handleBattleShoot(const mcp::json & params, const std::string &)
@@ -100,7 +106,7 @@ namespace
 			auto * unit = requireUnit(*battleCB, unitId);
 			auto * target = requireUnit(*battleCB, targetUnitId);
 			sendUnitAction(cb, *battleCB, battleId, BattleAction::makeShotAttack(unit, target));
-		});
+		}, afterUnitAction);
 	}
 
 	mcp::json handleBattleWait(const mcp::json & params, const std::string &)
@@ -114,7 +120,7 @@ namespace
 			auto battleCB = activeBattle(cb, battleId);
 			auto * unit = requireUnit(*battleCB, unitId);
 			sendUnitAction(cb, *battleCB, battleId, BattleAction::makeWait(unit));
-		});
+		}, afterUnitAction);
 	}
 
 	mcp::json handleBattleDefend(const mcp::json & params, const std::string &)
@@ -128,7 +134,7 @@ namespace
 			auto battleCB = activeBattle(cb, battleId);
 			auto * unit = requireUnit(*battleCB, unitId);
 			sendUnitAction(cb, *battleCB, battleId, BattleAction::makeDefend(unit));
-		});
+		}, afterUnitAction);
 	}
 
 	mcp::json handleBattleHeal(const mcp::json & params, const std::string &)
@@ -144,7 +150,7 @@ namespace
 			auto * unit = requireUnit(*battleCB, unitId);
 			auto * target = requireUnit(*battleCB, targetUnitId);
 			sendUnitAction(cb, *battleCB, battleId, BattleAction::makeHeal(unit, target));
-		});
+		}, afterUnitAction);
 	}
 
 	mcp::json handleBattleCatapult(const mcp::json & params, const std::string &)
@@ -165,7 +171,7 @@ namespace
 			ba.stackNumber = unit->unitId();
 			ba.aimToHex(BattleHex(static_cast<si16>(hex)));
 			cb.battleMakeUnitAction(battleId, ba);
-		});
+		}, afterUnitAction);
 	}
 
 	mcp::json handleBattleCastSpell(const mcp::json & params, const std::string &)
@@ -196,7 +202,7 @@ namespace
 				ba.aimToHex(BattleHex::INVALID);
 
 			cb.battleMakeSpellAction(battleId, ba);
-		});
+		}, afterUnitAction);
 	}
 
 	mcp::json handleBattleRetreat(const mcp::json &, const std::string &)
@@ -207,7 +213,7 @@ namespace
 			BattleID battleId = BattleID::NONE;
 			auto battleCB = activeBattle(cb, battleId);
 			cb.battleMakeUnitAction(battleId, BattleAction::makeRetreat(battleCB->battleGetMySide()));
-		});
+		}, afterBattleEnd);
 	}
 
 	mcp::json handleBattleSurrender(const mcp::json &, const std::string &)
@@ -218,7 +224,7 @@ namespace
 			BattleID battleId = BattleID::NONE;
 			auto battleCB = activeBattle(cb, battleId);
 			cb.battleMakeUnitAction(battleId, BattleAction::makeSurrender(battleCB->battleGetMySide()));
-		});
+		}, afterBattleEnd);
 	}
 
 	mcp::json handleBattleEndTactics(const mcp::json &, const std::string &)
@@ -229,7 +235,7 @@ namespace
 			BattleID battleId = BattleID::NONE;
 			auto battleCB = activeBattle(cb, battleId);
 			cb.battleMakeTacticAction(battleId, BattleAction::makeEndOFTacticPhase(battleCB->battleGetMySide()));
-		});
+		}, afterUnitAction);
 	}
 }
 
