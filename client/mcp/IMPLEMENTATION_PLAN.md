@@ -2,7 +2,7 @@
 
 Status: written 2026-07-13, based on branch `mcp` (HEAD `53e2376a1`). **All phases (0-6)
 implemented as of 2026-07-14** - see the phase table in section 14 for what each one covers and
-its one open caveat (GUI dialog dismissal, deliberately deferred - see the note under phase 5).
+the dialog-handling story (now solved via a GUI-suppression mode, see the note under phase 5).
 User-facing docs: [`docs/developers/MCP_Server.md`](../../docs/developers/MCP_Server.md).
 
 Goal: an LLM connected via MCP can **fully control the game and read all information a human
@@ -612,20 +612,32 @@ manually or via `--donotstartserver`/CLI options.
 | **2. Read completeness** ✅ | `AdventureInfoTools.cpp` + `Serializers` additions for tiles/buildings/hero types; tools `get_tiles`, `get_object_details`, `get_hero_path`, `get_market_info`, `get_tavern_heroes`, `get_quests`, `list_buildings`, `list_hero_types` | LLM can plan like a human player. Static data still exposed as regular tools rather than MCP resources - not yet done |
 | **3. Action completeness (adventure)** ✅ | `ArmyTools.cpp` (swap/merge/split/rebalance/move stacks, dismiss, upgrade), `ArtifactTools.cpp` (move/transfer/assemble/buy/sort/costume), `TownTools.cpp` (visit building/hire hero/swap garrison/research spell/rename/build boat/trade), hero misc actions added to `ActionTools.cpp` (cast spell/dig/castle gate/formation/tactics) | full adventure-map control, ~30 new action tools |
 | **4. Battle** ✅ | `BattleTools.cpp`: battle_move/attack/shoot/wait/defend/heal/catapult/cast_spell(hero-only)/retreat/surrender/end_tactics, tactics-phase dispatch via `battleMakeTacticAction` | battle control for all common actions; creature-ability casts (`makeCreatureSpellcast`/`makeWalkAndCast`) and richer `get_battle_state` (reachability/damage estimates/turn queue) still open |
-| **5. Polish** ✅⚠️ | `get_statistics` (reuses `StatisticDataSet::serializeJson` via a plain `JsonSerializer`, delivered inline in the action envelope's `events`); docs page `docs/developers/MCP_Server.md` with Claude Desktop/Code configs; tool description pass. GUI dialog dismissal was investigated and **deliberately not implemented** - see below | mixed human+LLM usable, with the GUI-sync caveat documented |
+| **5. Polish** ✅ | `get_statistics` (reuses `StatisticDataSet::serializeJson` via a plain `JsonSerializer`, delivered inline in the action envelope's `events`); docs page `docs/developers/MCP_Server.md` + LLM handbook `docs/developers/MCP_LLM_Handbook.md`; tool description pass; **GUI dialog handling solved via suppression mode** (2026-07-18, see below) | mixed human+LLM usable |
 | **6. Optional** ✅ | `LobbyTools.cpp`: `lobby_get_state`, `lobby_list_maps`, `lobby_select_map`, `lobby_claim_player`, `lobby_set_player_option`, `lobby_set_difficulty`, `lobby_start_game`, `load_game`, `restart_game`, `return_to_menu`. Lobby packs don't go through the `PackageApplied`/`RequestTracker` pipeline (that's wired to `CPackForClient`, not `CPackForLobby`), so these fire-and-forget and rely on a follow-up `lobby_get_state` to confirm the result - documented as such. Campaign support and MCP resource templates (vs. plain tools) remain undone - low value relative to effort | game-session automation |
 
-**GUI dialog dismissal - why it was skipped:** the plan originally scoped this as "~20 lines in
-CPlayerInterface". On closer inspection (`CPlayerInterface::showGarrisonDialog` and friends), several
-dialog windows re-send a server request on close as part of their own callback wiring (e.g.
-`CGarrisonWindow`'s `quit` callback calls `cb->selectionMade(0, queryID)`). Programmatically closing
-such a window after MCP has already answered its query would fire a second, stale request for an
-already-closed query - a real correctness bug, not a cosmetic one - and the dialog/window stack has
-its own serialization invariants (`dialogs` queue, `showingDialog->isBusy()`) that external closing
-could desync. Given the fix is riskier than originally scoped and touches the core human-play GUI
-path, it was left as a documented limitation (see `docs/developers/MCP_Server.md`) rather than risk
-introducing bugs into `client/CPlayerInterface.cpp` to fix a cosmetic desync that doesn't affect MCP's
-own correctness (the server-side answer is unaffected either way).
+**GUI dialog handling - suppression instead of dismissal (2026-07-18):** the plan originally
+scoped this as "close the GUI window after MCP answers the query". That's the wrong direction:
+several dialog windows re-send a server request on close as part of their own callback wiring
+(e.g. `CGarrisonWindow`'s `quit` callback calls `cb->selectionMade(0, queryID)`), so closing a
+window whose query MCP already answered would fire a second, stale reply - a real correctness
+bug. The clean inversion, implemented instead: a **suppression flag** (`set_llm_control` tool →
+`McpServer::dialogsHandledByLlm`, an `atomic<bool>`). When on, the query-bearing handlers in
+`CPlayerInterface` (`showBlockingDialog`, `heroGotLevel`/`commanderGotLevel`, `showGarrisonDialog`,
+`showTeleportDialog`, `showMapObjectSelectDialog`, `heroExchangeStarted`, `showRecruitmentDialog`,
+`showMarketWindow`/`showUniversityWindow`/`showTavernWindow`/`showHillFortWindow`/
+`showThievesGuildWindow`/`showShipyardDialog`) early-return **without creating a window** — the
+query is still registered/blocking server-side, but only the MCP registry + `answer_query` can
+resolve it, so GUI and LLM can never both answer. The window is never opened, so nothing needs
+closing and the `dialogs`/`showingDialog` invariants are untouched.
+
+Complementing it, a **sync hook** `McpServer::onRequestSent` (from `CClient::sendRequest`)
+watches every outgoing `QueryReply` (LLM's *or* a GUI window's, if suppression is off) and
+clears the matching `QueryRegistry` entry + journals `queryAnswered` — so the pending-query list
+stays truthful no matter who answered, and `answer_query` no longer has to do its own bookkeeping.
+
+Remaining edge: the end-of-battle result window shown during a battle a human is actively
+watching is not suppressed (it lives in the battle interface, not these adventure/town handlers);
+documented in `MCP_Server.md`.
 
 All phases (0-6) verified: full project builds and links with `ENABLE_MCP_SERVER=ON` (2026-07-14).
 Phases 0-1 got a live smoke test (headless VCMI under Xvfb, confirmed the MCP HTTP server starts and

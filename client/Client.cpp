@@ -344,6 +344,7 @@ int CClient::sendRequest(const CPackForServer & request, PlayerColor player, boo
 	request.requestID = requestID;
 	request.player = player;
 	GAME->server().sendGamePack(request);
+	ENGINE->mcpServer().onRequestSent(request);
 	if(vstd::contains(playerint, player))
 		playerint[player]->requestSent(&request, requestID);
 

@@ -16,6 +16,7 @@ namespace mcp { class server; }
 VCMI_LIB_NAMESPACE_BEGIN
 class CGameState;
 struct CPackForClient;
+struct CPackForServer;
 VCMI_LIB_NAMESPACE_END
 
 namespace mcptool
@@ -37,6 +38,12 @@ class McpServer : boost::noncopyable
 	std::unique_ptr<mcptool::QueryRegistry> queryRegistryInstance;
 	std::unique_ptr<JournalVisitor> visitorInstance;
 
+	/// When true, the GUI must not create windows for server dialogs (queries): the LLM handles
+	/// them purely through the MCP QueryRegistry + answer_query. Toggled by the set_llm_control
+	/// tool. Prevents the human GUI and the LLM both trying to answer the same query - see the
+	/// dialog handling section of the LLM handbook.
+	std::atomic<bool> dialogsHandledByLlm{false};
+
 public:
 	McpServer();
 	~McpServer();
@@ -47,6 +54,14 @@ public:
 	mcptool::RequestTracker & requestTracker() { return *requestTrackerInstance; }
 	mcptool::QueryRegistry & queryRegistry() { return *queryRegistryInstance; }
 
+	bool llmDialogControl() const { return dialogsHandledByLlm.load(); }
+	void setLlmDialogControl(bool on) { dialogsHandledByLlm.store(on); }
+
 	/// Called by CClient::handlePack for every applied CPackForClient. No-op when disabled.
 	void onPackApplied(CPackForClient & pack);
+
+	/// Called by CClient::sendRequest for every outgoing request. Detects QueryReply (from the
+	/// LLM or from a GUI window) and clears the matching registry entry + journals queryAnswered,
+	/// keeping the pending-query list truthful regardless of who answered. No-op when disabled.
+	void onRequestSent(const CPackForServer & pack);
 };

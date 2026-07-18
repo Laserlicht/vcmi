@@ -17,7 +17,9 @@
 
 #include "../lib/CConfigHandler.h"
 #include "../lib/GameConstants.h"
+#include "../lib/json/JsonNode.h"
 #include "../lib/networkPacks/NetPacksBase.h"
+#include "../lib/networkPacks/PacksForServer.h"
 
 #include "mcp/EventJournal.h"
 #include "mcp/RequestTracker.h"
@@ -107,4 +109,22 @@ void McpServer::onPackApplied(CPackForClient & pack)
 		return;
 
 	pack.visit(*visitorInstance);
+}
+
+void McpServer::onRequestSent(const CPackForServer & pack)
+{
+	if(!enabled)
+		return;
+
+	if(auto * reply = dynamic_cast<const QueryReply *>(&pack))
+	{
+		int32_t queryId = reply->qid.getNum();
+		queryRegistryInstance->remove(queryId);
+
+		JsonNode answered;
+		answered["queryId"] = JsonNode(queryId);
+		if(reply->reply.has_value())
+			answered["reply"] = JsonNode(*reply->reply);
+		journalInstance->push("queryAnswered", answered);
+	}
 }

@@ -88,6 +88,17 @@ namespace
 		return mcptool::textContent(result);
 	}
 
+	mcp::json handleSetLlmControl(const mcp::json & params, const std::string &)
+	{
+		bool enabled = params["enabled"].get<bool>();
+		// The flag is atomic and only read on the GUI thread when deciding whether to open a
+		// dialog window, so it is safe to set directly from this MCP worker thread.
+		ENGINE->mcpServer().setLlmDialogControl(enabled);
+		JsonNode result;
+		result["llmDialogControl"] = JsonNode(enabled);
+		return mcptool::textContent(result);
+	}
+
 	mcp::json handleAnswerQuery(const mcp::json & params, const std::string &)
 	{
 		int32_t queryId = params["queryId"].get<int32_t>();
@@ -97,18 +108,10 @@ namespace
 
 		return mcptool::actionTool([queryId, reply]()
 		{
-			auto & cb = mcptool::activeCallback();
-			// Removed proactively: re-sending an answer for an already-closed query is harmless
-			// (server rejects it), while leaving a stale entry around after a valid answer is not.
-			ENGINE->mcpServer().queryRegistry().remove(queryId);
-
-			JsonNode answered;
-			answered["queryId"] = JsonNode(queryId);
-			if(reply.has_value())
-				answered["reply"] = JsonNode(*reply);
-			ENGINE->mcpServer().journal().push("queryAnswered", answered);
-
-			cb.sendQueryReply(reply, QueryID(queryId));
+			// Registry cleanup + the queryAnswered journal event are handled centrally by
+			// McpServer::onRequestSent (hooked into CClient::sendRequest), so this works
+			// identically whether the QueryReply originates here or from a GUI window.
+			mcptool::activeCallback().sendQueryReply(reply, QueryID(queryId));
 		});
 	}
 
@@ -186,6 +189,14 @@ void registerQueryTools(mcp::server * srv)
 			.with_description("List server-side dialogs that are currently blocking the game until answered via answer_query")
 			.build(),
 		handleGetPendingQueries
+	);
+
+	srv->register_tool(
+		mcp::tool_builder("set_llm_control")
+			.with_description("Enable/disable LLM dialog control. When enabled, the game client stops opening GUI windows for server dialogs (level-up, yes/no, garrison, market, tavern, teleport, ...) - they flow only through get_pending_queries/answer_query, so an LLM and a human can't both try to answer the same dialog. Enable this once at the start of an LLM-driven session.")
+			.with_boolean_param("enabled", "true to let the LLM own dialogs (suppress GUI windows), false to restore normal GUI dialogs", true)
+			.build(),
+		handleSetLlmControl
 	);
 
 	srv->register_tool(

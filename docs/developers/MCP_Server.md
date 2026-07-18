@@ -89,7 +89,9 @@ works; two common ones:
 - **Dialogs.** Anything that would pop up a blocking window for a human (level-up skill choice,
   "do you want to fight?", garrison exchange, teleport exit picker, market/tavern windows, battle
   results) shows up in `get_pending_queries` and must be answered with `answer_query` before the
-  game proceeds. `wait_for_event` is the way to idle a turn loop until either a query opens or an
+  game proceeds. Call `set_llm_control { enabled: true }` once at session start so the client
+  suppresses the GUI windows for these dialogs and only the LLM answers them (see the LLM
+  handbook, §5). `wait_for_event` is the way to idle a turn loop until either a query opens or an
   event you care about arrives, instead of busy-polling.
 - **Static game data** (creatures, artifacts, spells, skills, buildings, hero types, the merged
   mod config) is exposed through `list_*`/`get_config` tools - it's immutable for the session, so
@@ -100,14 +102,17 @@ A typical LLM turn loop looks like: `get_game_state` → for each hero, `get_her
 response → `answer_query` for anything that opened → repeat → `end_turn` → `wait_for_event` for
 `playerStartsTurn` (or a battle) if it's an AI-controlled opponent's turn next.
 
+For the full playbook (turn loop, event reference, per-dialog reply semantics, battle loop),
+see the **[LLM Handbook](MCP_LLM_Handbook.md)**.
+
 ## Known limitations
 
-- **Mixing human and LLM control of the same window is not supported yet.** If a dialog is
-  answered via `answer_query` while a human is also looking at the client, the GUI window for
-  that dialog does not auto-close (see the implementation plan's risk notes for why this is
-  harder than it sounds - some dialog windows re-send a request on close, so naively closing them
-  from outside risks a duplicate/incorrect request). Play either through the LLM or through the
-  GUI for a given session, not both at once.
+- **Human + LLM control of the *same* dialog.** Solved for adventure/town dialogs via
+  `set_llm_control`: when on, the client does not open GUI windows for server queries, so the
+  LLM owns them exclusively (rather than the earlier approach of trying to close a window the
+  GUI already opened, which risked a double reply). The one remaining spot is the
+  end-of-battle result window shown during a battle a human is actively watching — outside that
+  case, battles are handled entirely through the query flow.
 - **Creature-ability spell casts in battle** (as opposed to hero spellcasting) aren't wired up yet
   - only hero-cast combat spells are supported by `battle_cast_spell`.
 - **`get_battle_state`'s `meleeAttackFromHexes` is a geometric approximation** (hexes adjacent to

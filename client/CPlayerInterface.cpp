@@ -32,6 +32,7 @@
 
 #include "GameEngine.h"
 #include "GameInstance.h"
+#include "McpServer.h"
 #include "gui/CursorHandler.h"
 #include "gui/WindowHandler.h"
 
@@ -130,6 +131,14 @@ namespace
 {
 	constexpr int LEVEL_UP_REQUEST_NONE = -1;
 	constexpr int LEVEL_UP_REQUEST_WAITING_FOR_REPLY = -2;
+
+	/// True when an LLM is driving via MCP and has taken over dialog handling: the GUI must not
+	/// open a window for a server query, because the LLM answers it through answer_query instead.
+	/// The query itself is still registered/blocking server-side - only its GUI is suppressed.
+	bool dialogsHandledByLlm()
+	{
+		return ENGINE->mcpServer().llmDialogControl();
+	}
 }
 
 std::shared_ptr<BattleInterface> CPlayerInterface::battleInt;
@@ -527,6 +536,8 @@ void CPlayerInterface::receivedResource()
 void CPlayerInterface::heroGotLevel(const CGHeroInstance *hero, PrimarySkill pskill, std::vector<SecondarySkill>& skills, QueryID queryID)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
+	if(dialogsHandledByLlm())
+		return;
 	auto availableSkills = skills;
 
 	auto showLevelUpDialog = [this, hero, pskill, availableSkills = std::move(availableSkills), queryID]() mutable
@@ -565,6 +576,8 @@ void CPlayerInterface::heroGotLevel(const CGHeroInstance *hero, PrimarySkill psk
 void CPlayerInterface::commanderGotLevel(const CCommanderInstance * commander, std::vector<ui32> skills, QueryID queryID)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
+	if(dialogsHandledByLlm())
+		return;
 	auto showLevelUpDialog = [this, commander, skills = std::move(skills), queryID]() mutable
 	{
 		closePendingLevelUpDialog();
@@ -1139,6 +1152,8 @@ void CPlayerInterface::showYesNoDialog(const std::string &text, CFunctionList<vo
 void CPlayerInterface::showBlockingDialog(const std::string &text, const std::vector<Component> &components, QueryID askID, const int soundID, bool selection, bool cancel, bool safeToAutoaccept)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
+	if(dialogsHandledByLlm())
+		return;
 	waitWhileDialog();
 
 	movementController->requestMovementAbort();
@@ -1183,12 +1198,16 @@ void CPlayerInterface::showBlockingDialog(const std::string &text, const std::ve
 void CPlayerInterface::showTeleportDialog(const CGHeroInstance * hero, TeleportChannelID channel, TTeleportExitsList exits, bool impassable, QueryID askID)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
+	if(dialogsHandledByLlm())
+		return;
 	movementController->showTeleportDialog(hero, channel, exits, impassable, askID);
 }
 
 void CPlayerInterface::showMapObjectSelectDialog(QueryID askID, const Component & icon, const MetaString & title, const MetaString & description, const std::vector<ObjectInstanceID> & objects)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
+	if(dialogsHandledByLlm())
+		return;
 
 	std::vector<ObjectInstanceID> objectGuiOrdered = objects;
 
@@ -1334,6 +1353,9 @@ void CPlayerInterface::showGarrisonDialog(const CArmedInstance * up, const CGHer
 	EVENT_HANDLER_CALLED_BY_CLIENT;
 	auto onEnd = [this, queryID](){ cb->selectionMade(0, queryID); };
 
+	if(dialogsHandledByLlm())
+		return; // LLM answers via answer_query; army moves still work through the MCP army tools
+
 	if (movementController->isHeroMovingThroughGarrison(down, up))
 	{
 		onEnd();
@@ -1381,6 +1403,8 @@ void CPlayerInterface::showHeroExchange(ObjectInstanceID hero1, ObjectInstanceID
 void CPlayerInterface::heroExchangeStarted(ObjectInstanceID hero1, ObjectInstanceID hero2, QueryID query)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
+	if(dialogsHandledByLlm())
+		return;
 	ENGINE->windows().createAndPushWindow<CExchangeWindow>(hero1, hero2, query);
 }
 
@@ -1457,6 +1481,8 @@ void CPlayerInterface::initializeHeroTownList()
 void CPlayerInterface::showRecruitmentDialog(const CGDwelling *dwelling, const CArmedInstance *dst, int level, QueryID queryID)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
+	if(dialogsHandledByLlm())
+		return; // window opened by an OpenWindow query; LLM recruits via recruit_creatures + answer_query
 	waitWhileDialog();
 	auto recruitCb = [this, dwelling, dst](CreatureID id, int count)
 	{
@@ -1484,6 +1510,8 @@ void CPlayerInterface::waitWhileDialog()
 void CPlayerInterface::showShipyardDialog(const IShipyard *obj)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
+	if(dialogsHandledByLlm())
+		return; // LLM builds boats via build_boat
 	auto state = obj->shipyardStatus();
 	TResources cost;
 	obj->getBoatCost(cost);
@@ -1731,6 +1759,8 @@ void CPlayerInterface::battleNewRoundFirst(const BattleID & battleID)
 void CPlayerInterface::showMarketWindow(const IMarket * market, const CGHeroInstance * visitor, QueryID queryID)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
+	if(dialogsHandledByLlm())
+		return; // LLM trades via the trade tool and closes the window via answer_query
 	auto onWindowClosed = [this, queryID](){
 		cb->selectionMade(0, queryID);
 	};
@@ -1757,6 +1787,8 @@ void CPlayerInterface::showMarketWindow(const IMarket * market, const CGHeroInst
 void CPlayerInterface::showUniversityWindow(const IMarket *market, const CGHeroInstance *visitor, QueryID queryID)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
+	if(dialogsHandledByLlm())
+		return;
 	auto onWindowClosed = [this, queryID](){
 		cb->selectionMade(0, queryID);
 	};
@@ -1766,6 +1798,8 @@ void CPlayerInterface::showUniversityWindow(const IMarket *market, const CGHeroI
 void CPlayerInterface::showHillFortWindow(const CGObjectInstance *object, const CGHeroInstance *visitor)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
+	if(dialogsHandledByLlm())
+		return;
 	ENGINE->windows().createAndPushWindow<CHillFortWindow>(visitor, object);
 }
 
@@ -1779,6 +1813,8 @@ void CPlayerInterface::availableArtifactsChanged(const CGBlackMarket * bm)
 void CPlayerInterface::showTavernWindow(const CGObjectInstance * object, const CGHeroInstance * visitor, QueryID queryID)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
+	if(dialogsHandledByLlm())
+		return; // LLM hires via hire_hero and closes the tavern via answer_query
 	auto onWindowClosed = [this, queryID](){
 		if (queryID != QueryID::NONE)
 			cb->selectionMade(0, queryID);
@@ -1789,6 +1825,8 @@ void CPlayerInterface::showTavernWindow(const CGObjectInstance * object, const C
 void CPlayerInterface::showThievesGuildWindow (const CGObjectInstance * obj)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
+	if(dialogsHandledByLlm())
+		return;
 	ENGINE->windows().createAndPushWindow<CThievesGuildWindow>(obj);
 }
 

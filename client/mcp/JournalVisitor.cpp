@@ -44,8 +44,19 @@ JournalVisitor::JournalVisitor(mcptool::EventJournal & journal, mcptool::Request
 
 void JournalVisitor::openQuery(int32_t queryId, const std::string & kind, JsonNode description)
 {
-	description["queryId"] = JsonNode(queryId);
 	description["kind"] = JsonNode(kind);
+
+	// Some packs (e.g. OpenWindow for shipyard/thieves-guild/hill-fort) carry QueryID::NONE (-1):
+	// they open a window but need no QueryReply. Journal them as a non-blocking event, but never
+	// add them to the pending-query registry - answer_query on -1 is meaningless.
+	if(queryId < 0)
+	{
+		description["queryId"] = JsonNode();
+		journal.push("windowOpened", description);
+		return;
+	}
+
+	description["queryId"] = JsonNode(queryId);
 	queries.add(queryId, description);
 	journal.push("queryOpened", description);
 }
