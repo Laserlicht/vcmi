@@ -309,5 +309,5 @@ void CConsoleHandler::end()
 
 void CConsoleHandler::start()
 {
-	thread = std::thread(std::bind(&CConsoleHandler::run, this));
+	thread = VCMIThread(std::bind(&CConsoleHandler::run, this));
 }

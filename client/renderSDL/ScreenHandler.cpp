@@ -230,6 +230,12 @@ ScreenHandler::ScreenHandler()
 		SDL_SetHint(SDL_HINT_AUDIO_CATEGORY, "AVAudioSessionCategoryAmbient");
 #endif
 
+#ifdef VCMI_VITA
+	// Bind face buttons by their physical position (X = accept, O = cancel) rather than
+	// by Xbox-style label, matching PlayStation convention.
+	SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "0");
+#endif
+
 	if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER))
 	{
 		logGlobal->error("Something was wrong: %s", SDL_GetError());
@@ -488,6 +494,12 @@ SDL_Window * ScreenHandler::createWindow()
 
 #ifdef VCMI_ANDROID
 	return createWindowImpl(Point(), SDL_WINDOW_RESIZABLE, false);
+#endif
+
+#ifdef VCMI_VITA
+	// Vita has a single fixed native resolution (960x544) and always renders fullscreen -
+	// there is no windowed mode and no dock/undock resolution change to handle.
+	return createWindowImpl(getPreferredWindowResolution(), 0, false);
 #endif
 }
 

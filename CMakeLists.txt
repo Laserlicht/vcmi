@@ -16,6 +16,16 @@ if(APPLE AND NOT IOS)
 	set(MACOS 1)
 endif()
 
+# PS Vita: cmake_modules/Toolchain_vita.cmake (a thin wrapper around VitaSDK's own
+# toolchain file) sets a plain `VITA` variable. Vita is treated as a mobile-class
+# target throughout, like iOS/Android.
+if(VITA)
+	# Provide vitasdk/newlib compatibility shims to every target, force-included so
+	# their defines land before any dependency header (e.g. boost::asio) is parsed.
+	include_directories(BEFORE "${CMAKE_SOURCE_DIR}/vita/compat")
+	add_compile_options("-include" "${CMAKE_SOURCE_DIR}/vita/compat/vita_compat.h")
+endif()
+
 # Use Visual Studio's latest debugger information format settings.
 if(POLICY CMP0142)
 	cmake_policy(SET CMP0142 NEW)
@@ -74,6 +84,10 @@ if(ANDROID)
 
 	set(ENABLE_STATIC_LIBS ON)
 	set(ENABLE_LAUNCHER ON)
+elseif(VITA)
+	# Single static self/vpk, no Qt launcher/editor.
+	set(ENABLE_STATIC_LIBS ON)
+	set(ENABLE_LAUNCHER OFF)
 else()
 	if(IOS)
 		set(ENABLE_STATIC_LIBS ON)
@@ -95,16 +109,29 @@ endif()
 
 include(CMakeDependentOption)
 
-if(IOS OR ANDROID)
+if(IOS OR ANDROID OR VITA)
 	set(ENABLE_MONOLITHIC_INSTALL OFF)
 	set(ENABLE_SINGLE_APP_BUILD ON)
-	option(ENABLE_EDITOR "Enable compilation of map editor" ON)
-	cmake_dependent_option(ENABLE_TEMPLATE_EDITOR "Enable template editor inside map editor" ON "ENABLE_EDITOR" OFF)
+	if(VITA)
+		# No Qt on Vita, so no map editor / template editor.
+		set(ENABLE_EDITOR OFF)
+		set(ENABLE_TEMPLATE_EDITOR OFF)
+	else()
+		option(ENABLE_EDITOR "Enable compilation of map editor" ON)
+		cmake_dependent_option(ENABLE_TEMPLATE_EDITOR "Enable template editor inside map editor" ON "ENABLE_EDITOR" OFF)
+	endif()
 	set(ENABLE_TEST OFF)
 	set(ENABLE_LOBBY OFF)
 	set(ENABLE_SERVER OFF)
 	set(COPY_CONFIG_ON_BUILD OFF)
 	set(ENABLE_DISCORD OFF)
+
+	if(VITA)
+		# The ML battle AI needs onnxruntime, which has no Vita build.
+		# ENABLE_INNOEXTRACT (GOG installer extraction) is a launcher-only feature and
+		# already resolves to OFF via its cmake_dependent_option on ENABLE_LAUNCHER.
+		set(ENABLE_MMAI OFF CACHE BOOL "" FORCE)
+	endif()
 else()
 	option(ENABLE_MONOLITHIC_INSTALL "Install everything in single directory on Linux and Mac" OFF) # Used for Snap packages and also useful for debugging
 	option(COPY_CONFIG_ON_BUILD "Copies config folder into output directory at building phase" ON)
@@ -165,7 +192,16 @@ option(VCMI_PORTMASTER "PortMaster build" OFF)
 ############################################
 
 # OBJECT libs are linked into the shared (or PIE-executable-embedded) facade, so every TU must be PIC.
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+# Except on Vita: vita-elf-create (which converts the linked ELF into Sony's SCE format)
+# only understands a small, fixed set of ARM relocation types and rejects PIC-generated
+# GOT-relative ones (R_ARM_BASE_PREL, "Invalid relocation type 25!") - Vita homebrew
+# executables are single statically-linked binaries with no shared/PIE-embedded facade
+# to begin with, so PIC brings no benefit here anyway.
+if(VITA)
+	set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
+else()
+	set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
 
 if(ENABLE_COLORIZED_COMPILER_OUTPUT)
 	if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
@@ -602,7 +638,17 @@ if(ENABLE_LAUNCHER OR ENABLE_EDITOR)
 endif()
 
 if(NOT ENABLE_MINIMAL_LIB)
-	find_package(TBB REQUIRED)
+	if(VITA)
+		# Real oneTBB has no PS Vita build. Use the bundled header-only shim that
+		# implements the subset of the TBB API VCMI uses (parallel_for/reduce,
+		# blocked_range, task_arena/group, global_control and the concurrent
+		# containers) - see vita/tbb-shim/ and vita/README.md.
+		add_library(TBB::tbb INTERFACE IMPORTED)
+		set_target_properties(TBB::tbb PROPERTIES
+			INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/vita/tbb-shim/include")
+	else()
+		find_package(TBB REQUIRED)
+	endif()
 	find_package(luajit)
 
 	if(TARGET luajit::luajit)
@@ -652,6 +698,13 @@ elseif(APPLE)
 			set(DATA_DIR ".")
 		endif()
 	endif()
+elseif(VITA)
+	# Packaging bundles config/Mods/scripts directly into the .vpk (see
+	# clientapp/CMakeLists.txt); these are unused for actual installation but kept
+	# defined since other parts of the build reference them.
+	set(BIN_DIR "." CACHE STRING "Where to install binaries")
+	set(LIB_DIR "." CACHE STRING "Where to install main library")
+	set(DATA_DIR "." CACHE STRING "Where to install data files")
 elseif(ANDROID)
 	include(GNUInstallDirs)
 	set(LIB_DIR "libs/${ANDROID_ABI}")
@@ -769,6 +822,9 @@ if(ANDROID)
 		set(stlLibName "${CMAKE_SHARED_LIBRARY_PREFIX}${ANDROID_STL}${CMAKE_SHARED_LIBRARY_SUFFIX}")
 		vcmi_install_libs_symlink("${CMAKE_SYSROOT}/usr/lib/${ANDROID_SYSROOT_LIB_SUBDIR}/${stlLibName}")
 	endif()
+elseif(VITA)
+	# Packaging (config/Mods/scripts bundled into the .vpk) is handled directly by
+	# clientapp/CMakeLists.txt's POST_BUILD step, not by install().
 else()
 	install(DIRECTORY scripts DESTINATION ${DATA_DIR})
 	install(DIRECTORY config DESTINATION ${DATA_DIR})
@@ -777,8 +833,8 @@ else()
 	endif()
 endif()
 
-# that script is useless for Windows / iOS / Android
-if(NOT WIN32 AND NOT IOS AND NOT ANDROID AND NOT ENABLE_MINIMAL_LIB)
+# that script is useless for Windows / iOS / Android / Vita
+if(NOT WIN32 AND NOT IOS AND NOT ANDROID AND NOT VITA AND NOT ENABLE_MINIMAL_LIB)
 	install(FILES vcmibuilder DESTINATION ${BIN_DIR} PERMISSIONS
 		OWNER_WRITE OWNER_READ OWNER_EXECUTE
 					GROUP_READ GROUP_EXECUTE

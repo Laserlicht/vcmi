@@ -42,6 +42,7 @@
 #include "../lib/texts/MetaString.h"
 #include "../lib/GameLibrary.h"
 #include "../lib/ScopeGuard.h"
+#include "../lib/VCMIThread.h"
 #include "../lib/VCMIDirs.h"
 
 #include <boost/program_options.hpp>
@@ -53,6 +54,17 @@
 #ifdef VCMI_ANDROID
 #include "../lib/CAndroidVMHelper.h"
 #include <SDL_system.h>
+#endif
+
+#ifdef VCMI_VITA
+#include <psp2/net/net.h>
+#include <psp2/net/netctl.h>
+
+namespace
+{
+	// vitasdk requires an explicit memory pool for sceNet's internal allocations.
+	char vitaNetMemoryPool[16 * 1024];
+}
 #endif
 
 #if __MINGW32__
@@ -120,7 +132,9 @@ static void prog_help(const po::options_description &opts)
 
 #if defined(VCMI_WINDOWS) && !defined(__GNUC__) && defined(VCMI_WITH_DEBUG_CONSOLE)
 int wmain(int argc, wchar_t* argv[])
-#elif defined(VCMI_MOBILE)
+// On Vita, SDL2 does not redefine main()->SDL_main for __vita__, and vitasdk's crt0
+// calls our main() directly, same situation as on Nintendo Switch.
+#elif defined(VCMI_MOBILE) && !defined(VCMI_VITA)
 int SDL_main(int argc, char *argv[])
 #else
 int main(int argc, char * argv[])
@@ -129,6 +143,18 @@ int main(int argc, char * argv[])
 #ifdef VCMI_ANDROID
 	CAndroidVMHelper::initClassloader(SDL_AndroidGetJNIEnv());
 	// boost will crash without this
+	setenv("LANG", "C", 1);
+#endif
+
+#ifdef VCMI_VITA
+	// Sockets are needed for multiplayer; init before any networking use.
+	SceNetInitParam netInitParam;
+	netInitParam.memory = vitaNetMemoryPool;
+	netInitParam.size = sizeof(vitaNetMemoryPool);
+	netInitParam.flags = 0;
+	sceNetInit(&netInitParam);
+	sceNetCtlInit();
+	// boost on newlib needs a sane locale, as on Android
 	setenv("LANG", "C", 1);
 #endif
 
@@ -205,7 +231,7 @@ int main(int argc, char * argv[])
 	if(vm.count("logLocation"))
 		logPath = vm["logLocation"].as<std::string>() + "/VCMI_Client_log.txt";
 
-#ifndef VCMI_IOS
+#if !defined(VCMI_IOS) && !defined(VCMI_VITA)
 
 	auto callbackFunction = [](std::string buffer, bool calledFromIngameConsole)
 	{
@@ -218,6 +244,7 @@ int main(int argc, char * argv[])
 
 	CBasicLogConfigurator logConfigurator(logPath, &console);
 #else
+	// No interactive stdin console on iOS / PS Vita
 	CBasicLogConfigurator logConfigurator(logPath, nullptr);
 #endif
 
@@ -310,7 +337,7 @@ int main(int argc, char * argv[])
 	
 #ifndef VCMI_NO_THREADED_LOAD
 	//we can properly play intro only in the main thread, so we have to move loading to the separate thread
-	std::thread loading([]()
+	VCMIThread loading([]()
 	{
 		setThreadName("initialize");
 		init();

@@ -243,7 +243,11 @@ void CArchiveLoader::extractToFolder(const std::string & outputSubFolder, const 
 std::string CArchiveLoader::getFullFileURI(const ResourcePath& resourceName) const
 {
 	auto relativePath = TextOperations::Utf8TofilesystemPath(resourceName.getName());
+#ifdef VCMI_VITA
+	auto path = archive / relativePath; // canonical() fails on vitasdk device paths (ux0:/app0:)
+#else
 	auto path = boost::filesystem::canonical(archive) / relativePath;
+#endif
 	return TextOperations::filesystemPathToUtf8(path);
 }
 

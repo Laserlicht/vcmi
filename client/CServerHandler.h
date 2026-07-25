@@ -10,6 +10,7 @@
 #pragma once
 
 #include "../lib/CStopWatch.h"
+#include "../lib/VCMIThread.h"
 
 #include "../lib/network/NetworkInterface.h"
 #include "../lib/StartInfo.h"
@@ -106,7 +107,7 @@ class CServerHandler final : public IServerAPI, public LobbyInfo, public INetwor
 	std::shared_ptr<CMapInfo> mapToStart;
 	std::vector<std::string> localPlayerNames;
 
-	std::thread threadNetwork;
+	VCMIThread threadNetwork;
 
 	std::atomic<EClientState> state;
 	bool lobbyPreviewMode = false;

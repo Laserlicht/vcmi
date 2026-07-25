@@ -35,6 +35,29 @@
             "generator": "Ninja"
         },
         {
+            "name": "vita-release",
+            "displayName": "PS Vita (VitaSDK)",
+            "inherits": "release-binary-dir",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake_modules/Toolchain_vita.cmake",
+                "CMAKE_BUILD_TYPE": "Release",
+                "Boost_USE_STATIC_LIBS": "ON",
+                "Boost_USE_STATIC_RUNTIME": "ON",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/vita-release",
+                "ENABLE_CLIENT": "ON",
+                "ENABLE_SERVER": "OFF",
+                "ENABLE_LAUNCHER": "OFF",
+                "ENABLE_EDITOR": "OFF",
+                "ENABLE_TEST": "OFF",
+                "ENABLE_LOBBY": "OFF",
+                "ENABLE_VIDEO": "ON",
+                "ENABLE_MMAI": "OFF",
+                "ENABLE_TRANSLATIONS": "OFF",
+                "ENABLE_PCH": "OFF"
+            }
+        },
+        {
             "name" : "linux-release",
             "inherits" : "default-release",
             "hidden": true,
@@ -552,6 +575,11 @@
             "name": "portmaster-release",
             "configurePreset": "portmaster-release",
             "inherits": "default-release",
+            "configuration": "Release"
+        },
+        {
+            "name": "vita-release",
+            "configurePreset": "vita-release",
             "configuration": "Release"
         }
     ],

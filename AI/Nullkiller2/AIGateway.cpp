@@ -46,7 +46,11 @@ AIGateway::AIGateway()
 	destinationTeleport = ObjectInstanceID();
 	destinationTeleportPos = int3(-1);
 	nullkiller.reset(new Nullkiller());
+#ifdef VCMI_VITA
+	asyncTasks = std::make_unique<AsyncRunner>(true); // Vita: run the AI turn on a real thread
+#else
 	asyncTasks = std::make_unique<AsyncRunner>();
+#endif
 }
 
 AIGateway::~AIGateway()

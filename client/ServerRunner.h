@@ -9,6 +9,8 @@
  */
 #pragma once
 
+#include "../lib/VCMIThread.h"
+
 struct StartInfo;
 class INetworkHandler;
 class INetworkClientListener;
@@ -32,7 +34,7 @@ public:
 class ServerThreadRunner final : public IServerRunner, boost::noncopyable
 {
 	std::unique_ptr<CVCMIServer> server;
-	std::thread threadRunLocalServer;
+	VCMIThread threadRunLocalServer;
 	uint16_t serverPort = 0;
 	bool lobbyMode = false;
 

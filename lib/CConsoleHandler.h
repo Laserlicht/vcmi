@@ -9,6 +9,8 @@
  */
 #pragma once
 
+#include "VCMIThread.h"
+
 /** The color enum is used for colored text console output. */
 enum class EConsoleTextColor : int8_t
 {
@@ -98,5 +100,5 @@ private:
 
 	std::mutex smx;
 
-	std::thread thread;
+	VCMIThread thread;
 };

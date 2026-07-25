@@ -118,12 +118,70 @@ elseif(ANDROID)
 		COMMENT "Create android package"
 	)
 	add_dependencies(android_deploy vcmiclient)
+elseif(VITA)
+	# Package the .vpk homebrew archive. The bundled engine data (config, the built-in
+	# VCMI mod and scripts) is staged into a plain directory and added into the vpk
+	# alongside the eboot; the player's Heroes III data lives on the memory card at
+	# ux0:data/vcmi, not in the package (see lib/VCMIDirs.cpp's VCMIDirsVita).
+	include("${VITASDK}/share/vita.cmake" REQUIRED)
+
+	# A TARGET POST_BUILD custom command (used by the Switch port this was adapted from)
+	# doesn't register its side-effect files as ninja-visible OUTPUTs, so vita_create_vpk()
+	# below - which DEPENDS on these exact paths - would fail ninja's static graph check
+	# ("missing and no known rule to make it") before the build even starts. An
+	# OUTPUT-based custom command does register them properly.
+	set(vitaStageDir "${CMAKE_BINARY_DIR}/vita-stage")
+	add_custom_command(
+		OUTPUT "${vitaStageDir}/config" "${vitaStageDir}/Mods" "${vitaStageDir}/scripts"
+		COMMAND ${CMAKE_COMMAND} -E rm -rf "${vitaStageDir}"
+		COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/config" "${vitaStageDir}/config"
+		COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/Mods" "${vitaStageDir}/Mods"
+		COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/scripts" "${vitaStageDir}/scripts"
+		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+		COMMENT "Staging config/Mods/scripts for the Vita package"
+		VERBATIM
+	)
+	add_custom_target(vita_stage_data ALL DEPENDS "${vitaStageDir}/config" "${vitaStageDir}/Mods" "${vitaStageDir}/scripts")
+
+	# UNSAFE + a generous MEMSIZE request the "extended memory" budget (~328MB instead
+	# of the ~26MB default) that most homebrew of this size need - requires the user's
+	# console to have "Enable Unsafe Homebrew" set, and is still likely tight for VCMI's
+	# full asset set; see vita/README.md for the memory-budget caveat.
+	# Pass the real output path rather than the bare target name: vcmi_set_output_dir()
+	# redirects vcmiclient's RUNTIME_OUTPUT_DIRECTORY to ${CMAKE_BINARY_DIR}/bin, but
+	# vita_create_self()'s TARGET-name branch naively assumes
+	# ${CMAKE_CURRENT_BINARY_DIR}/<name> (i.e. clientapp/vcmiclient, which doesn't
+	# exist). A generator expression doesn't work either: the macro runs
+	# get_filename_component() on this string at configure time, before generator
+	# expressions are evaluated, so it must be a plain literal path.
+	vita_create_self(eboot.bin "${CMAKE_BINARY_DIR}/bin/vcmiclient" UNSAFE MEMSIZE 335872)
+
+	vita_create_vpk(vcmiclient.vpk "VCMI00001" eboot.bin
+		VERSION "01.00"
+		NAME "VCMI"
+		FILE "${vitaStageDir}/config" config
+		     "${vitaStageDir}/Mods" Mods
+		     "${vitaStageDir}/scripts" scripts
+	)
+
+	# Both macros above only auto-wire add_dependencies() when given a CMake TARGET
+	# name; we passed a literal file path to vita_create_self() (see comment above) and
+	# a plain string to vita_create_vpk()'s eboot arg, so neither auto-wire fired here -
+	# add the build-order edges by hand, or ninja may try to package a stale/missing
+	# eboot.bin before vcmiclient (or eboot.bin itself) has actually been built.
+	if(CMAKE_VERSION VERSION_LESS "3.20.0")
+		add_dependencies(eboot.bin vcmiclient)
+		add_dependencies(vcmiclient.vpk eboot.bin)
+	else()
+		add_dependencies(eboot.bin-self vcmiclient)
+		add_dependencies(vcmiclient.vpk-vpk eboot.bin-self)
+	endif()
 else()
 	install(TARGETS vcmiclient DESTINATION ${BIN_DIR})
 endif()
 
 #install icons and desktop file on Linux
-if(NOT WIN32 AND NOT APPLE AND NOT ANDROID)
+if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND NOT VITA)
 	foreach(iconSize 16 22 32 48 64 128 256 512 1024 2048)
 		install(FILES "icons/vcmiclient.${iconSize}x${iconSize}.png"
 			DESTINATION "share/icons/hicolor/${iconSize}x${iconSize}/apps"

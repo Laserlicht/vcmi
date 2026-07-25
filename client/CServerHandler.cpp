@@ -90,7 +90,7 @@ void CServerHandler::waitForNetworkThread()
 {
 	if (threadNetwork.joinable())
 	{
-		if(threadNetwork.get_id() == std::this_thread::get_id())
+		if(threadNetwork.get_id() == VCMIThisThread::get_id())
 			return;
 
 		//ENGINE->interfaceMutex must have been locked by the current thread, otherwise an unlock will cause undefined behavior

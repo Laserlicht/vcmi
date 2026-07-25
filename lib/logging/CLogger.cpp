@@ -390,6 +390,17 @@ void CLogConsoleTarget::write(const LogRecord & record)
 		logs.insert({domainName, currentLog});
 	}
 	os_log_with_type(currentLog, type, "%{public}s", message.c_str());
+#elif defined(VCMI_VITA)
+	// No CConsoleHandler on Vita (compiled out on mobile, see the constructor above);
+	// log to stdout/stderr only.
+	{
+		const bool printToStdErr = record.level >= ELogLevel::WARN;
+		std::lock_guard _(mx);
+		if(printToStdErr)
+			std::cerr << message << std::endl;
+		else
+			std::cout << message << std::endl;
+	}
 #else
 
 	const bool printToStdErr = record.level >= ELogLevel::WARN;

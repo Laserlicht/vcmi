@@ -398,6 +398,41 @@ void VCMIDirsAndroid::init()
 	IVCMIDirsUNIX::init();
 }
 
+#elif defined(VCMI_VITA)
+class VCMIDirsVita final : public IVCMIDirsUNIX
+{
+public:
+	bfs::path userDataPath() const override;
+	bfs::path userCachePath() const override;
+	bfs::path userConfigPath() const override;
+
+	std::vector<bfs::path> dataPaths() const override;
+
+	bfs::path binaryPath() const override;
+};
+
+// Writable storage is on the memory card ("ux0:"); bundled data ships in the .vpk's
+// read-only "app0:" mount. Cache/log are kept out of userDataPath() - that directory is
+// scanned recursively at startup, and a live-open log file being stat()-ed mid-scan is a
+// known crash class on other homebrew consoles with similarly limited filesystem
+// layers (see the Nintendo Switch port); keeping it in an unscanned sibling directory
+// is cheap insurance even though this has not been confirmed as an issue on Vita.
+bfs::path VCMIDirsVita::userDataPath() const { return "ux0:data/vcmi"; }
+bfs::path VCMIDirsVita::userCachePath() const { return userDataPath() / "cache"; }
+bfs::path VCMIDirsVita::userConfigPath() const { return userDataPath() / "config"; }
+
+std::vector<bfs::path> VCMIDirsVita::dataPaths() const
+{
+	// Order matters: later entries have higher priority in VCMI's virtual filesystem,
+	// so user-provided content on the memory card overrides the bundled app0: data.
+	return {
+		binaryPath(),   // app0:/ - bundled config, Mods/VCMI, scripts (read-only)
+		userDataPath(), // ux0:data/vcmi - user's Heroes III data, extra mods, saves
+	};
+}
+
+bfs::path VCMIDirsVita::binaryPath() const { return "app0:/"; }
+
 #elif defined(VCMI_PORTMASTER)
 class VCMIDirsPM : public IVCMIDirsUNIX
 {
@@ -575,6 +610,8 @@ namespace VCMIDirs
 			static VCMIDirsWIN32 singleton;
 		#elif defined(VCMI_ANDROID)
 			static VCMIDirsAndroid singleton;
+		#elif defined(VCMI_VITA)
+			static VCMIDirsVita singleton;
 		#elif defined(VCMI_PORTMASTER)
 			static VCMIDirsPM singleton;
 		#elif defined(VCMI_XDG)

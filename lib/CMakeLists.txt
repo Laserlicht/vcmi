@@ -389,6 +389,7 @@ set(lib_HEADERS
 	CConsoleHandler.h
 	CThreadHelper.h
 	VCMIDirs.h
+	VCMIThread.h
 )
 
 set(lib_MAIN_HEADERS

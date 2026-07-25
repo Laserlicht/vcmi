@@ -29,6 +29,7 @@
 
 #include "../../lib/CConfigHandler.h"
 #include "../../lib/CThreadHelper.h"
+#include "../../lib/VCMIThread.h"
 #include "../../lib/texts/MetaString.h"
 #include "../../lib/texts/TextOperations.h"
 
@@ -299,7 +300,7 @@ void CInGameConsole::endEnteringText(bool processEnteredText)
 				commandController.processCommand(txt.substr(1), true);
 			};
 
-			std::thread clientCommandThread(threadFunction);
+			VCMIThread clientCommandThread(threadFunction);
 			clientCommandThread.detach();
 		}
 		else

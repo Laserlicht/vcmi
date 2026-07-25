@@ -40,6 +40,7 @@
 #include "../../lib/CConfigHandler.h"
 #include "../../lib/CStack.h"
 #include "../../lib/CThreadHelper.h"
+#include "../../lib/VCMIThread.h"
 #include "../../lib/GameLibrary.h"
 #include "../../lib/TerrainHandler.h"
 #include "../../lib/UnlockGuard.h"
@@ -839,7 +840,7 @@ void BattleInterface::requestAutofightingAIToTakeAction()
 			// FIXME: unsafe
 			// Run task in separate thread to avoid UI lock while AI is making turn (which might take some time)
 			// HOWEVER this thread won't atttempt to lock game state, potentially leading to races
-			std::thread aiThread([localBattleID = battleID, localCurInt = curInt, activeStack]()
+			VCMIThread aiThread([localBattleID = battleID, localCurInt = curInt, activeStack]()
 			{
 				setThreadName("autofightingAI");
 				localCurInt->autofightingAI->activeStack(localBattleID, activeStack);

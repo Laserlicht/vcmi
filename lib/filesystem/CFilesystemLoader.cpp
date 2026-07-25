@@ -209,8 +209,14 @@ std::unordered_map<ResourcePath, boost::filesystem::path> CFilesystemLoader::lis
 std::string CFilesystemLoader::getFullFileURI(const ResourcePath& resourceName) const
 {
 	auto filePath = getResourceName(resourceName);
+#ifdef VCMI_VITA
+	// canonical() fails (EINVAL) on vitasdk device paths (ux0:/app0:); there are no
+	// symlinks on these filesystems, so the path is already canonical.
+	return TextOperations::filesystemPathToUtf8(*filePath);
+#else
 	auto path = boost::filesystem::canonical(*filePath);
 	return TextOperations::filesystemPathToUtf8(path);
+#endif
 }
 
 std::time_t CFilesystemLoader::getLastWriteTime(const ResourcePath& resourceName) const

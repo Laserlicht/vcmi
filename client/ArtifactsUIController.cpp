@@ -19,6 +19,7 @@
 #include "windows/CWindowWithArtifacts.h"
 
 #include "../lib/GameLibrary.h"
+#include "../lib/VCMIThread.h"
 #include "../lib/callback/CCallback.h"
 #include "../lib/entities/artifact/ArtifactUtils.h"
 #include "../lib/entities/artifact/CArtifact.h"
@@ -63,7 +64,7 @@ bool ArtifactsUIController::askToAssemble(const CGHeroInstance * hero, const Art
 	auto assemblyPossibilities = ArtifactUtils::assemblyPossibilities(hero, art->getTypeId(), onlyEquipped);
 	if(!assemblyPossibilities.empty())
 	{
-		auto askThread = new std::thread([this, hero, slot, assemblyPossibilities, checkIgnored]() -> void
+		auto askThread = new VCMIThread([this, hero, slot, assemblyPossibilities, checkIgnored]() -> void
 			{
 				std::scoped_lock interfaceLock(ENGINE->interfaceMutex);
 				for(const auto combinedArt : assemblyPossibilities)

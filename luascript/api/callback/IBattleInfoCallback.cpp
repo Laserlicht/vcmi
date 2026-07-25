@@ -29,6 +29,17 @@
 #include "../../../lib/battle/CObstacleInstance.h"
 #include "../../../lib/BattleFieldHandler.h"
 
+#ifdef VCMI_VITA
+// LUA_OK was introduced in Lua 5.2; vita/deps/build-lua.sh builds plain Lua 5.1
+// instead of LuaJIT (whose lua.h defines LUA_OK for compatibility) because LuaJIT's
+// JIT compiler needs RWX pages Vita homebrew can't allocate - see vita/README.md.
+// Semantically identical on 5.1: 0 already means "no error" for lua_pcall(), it just
+// isn't a named constant yet.
+#ifndef LUA_OK
+#define LUA_OK 0
+#endif
+#endif
+
 namespace scripting::api
 {
 

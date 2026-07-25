@@ -122,14 +122,22 @@ std::unordered_set<ResourcePath> CZipLoader::getFilteredFiles(std::function<bool
 std::string CZipLoader::getFullFileURI(const ResourcePath& resourceName) const
 {
 	auto relativePath = TextOperations::Utf8TofilesystemPath(resourceName.getName());
+#ifdef VCMI_VITA
+	auto path = archiveName / relativePath; // canonical() fails on vitasdk device paths
+#else
 	auto path = boost::filesystem::canonical(archiveName) / relativePath;
+#endif
 	return TextOperations::filesystemPathToUtf8(path);
 }
 
 std::time_t CZipLoader::getLastWriteTime(const ResourcePath& resourceName) const
 {
+#ifdef VCMI_VITA
+	return boost::filesystem::last_write_time(archiveName); // canonical() fails on vitasdk device paths
+#else
 	auto path = boost::filesystem::canonical(archiveName);
 	return  boost::filesystem::last_write_time(path);
+#endif
 }
 
 /// extracts currently selected file from zip into stream "where"

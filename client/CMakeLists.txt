@@ -513,15 +513,75 @@ endif()
 
 target_link_libraries(vcmiclientcommon PRIVATE vcmiservercommon)
 
-target_link_libraries(vcmiclientcommon PUBLIC
+if(VITA)
+	# VCMI's FindSDL2*/Findffmpeg modules only attach the bare archives they're looking
+	# for. On Vita everything is statically linked, so the full transitive dependency
+	# closure has to be linked too - and it turned out to be far larger than any
+	# hand-picked list: ffmpeg and SDL2_mixer (both built with many optional codecs
+	# enabled in this vdpm distribution) alone pull in openssl, lame, liblzma, zstd,
+	# libwebp's demuxer, libxmp, libpng, and more. Hand-curating exact library names
+	# proved to be a losing, one-symbol-at-a-time game (see vita/README.md); instead,
+	# every static archive vdpm installed is thrown into one big --start-group so the
+	# linker's repeated-pass symbol resolution picks whatever object files are
+	# actually referenced - unreferenced archives in the group cost nothing.
+	#
+	# vcmi (and its own transitive deps, e.g. Lua) must be INSIDE this same group, not
+	# linked separately beforehand: a plain non-grouped archive only has its members
+	# extracted for symbols already undefined at the point it's scanned, so an earlier
+	# vcmi + a later group of "everything else" can silently fail to resolve symbols
+	# that only became referenced partway through vcmi's own archive (observed in
+	# practice - Lua's archive genuinely contains lua_call/lua_pcall etc., confirmed
+	# with nm, yet reported undefined when linked as a separate later group).
+	file(GLOB vitaAllStaticLibs "${VITASDK}/arm-vita-eabi/lib/*.a")
+
+	# libSceLibMonoBridge_stub[_weak].a redirects the *entire* pthread API surface
+	# (pthread_create, pthread_mutex_lock, pthread_key_create, ...) to NID imports of
+	# Sce's Mono-bridge system module - an unrelated ABI meant for Mono/.NET bridge
+	# consumers, not a real pthread implementation. Its archive name sorts ahead of
+	# libpthread.a, so under --allow-multiple-definition (see below) its bogus stubs
+	# were silently winning over vitasdk's real pthread-embedded implementation for
+	# every threading call in the engine - root cause of a pre-main() crash cascade
+	# reproduced identically on both Vita3K and real hardware (PTE_OS_NO_RESOURCES /
+	# SCE_KERNEL_ERROR_UNKNOWN_MUTEX_ID / "Unimplemented pthread_key_create import
+	# called"). VCMI has no Mono bridge usage, so exclude it outright rather than rely
+	# on link order.
+	list(FILTER vitaAllStaticLibs EXCLUDE REGEX "libSceLibMonoBridge_stub(_weak)?\\.a$")
+
+	# A number of "*_stub[_weak].a" archives in this directory (observed so far:
+	# SceLibc_stub, SceSysclibForDriver_stub - there is no full list, since these are
+	# an alternative to statically linking libc/libstdc++, not something documented as
+	# incompatible with doing so) redirect libc/libstdc++ symbols (strtol, logic_error,
+	# ...) to Vita's *shared* system modules. This build links libc/libstdc++
+	# statically instead (the homebrew norm - no dependency on a particular system
+	# module version), so every one of them is a duplicate-definition conflict against
+	# the toolchain's own libc.a/libstdc++.a - and GNU ld's default handling of that
+	# (a fatal error) was aborting the rest of the --start-group resolution pass before
+	# it got a chance to resolve genuinely-present later symbols (e.g. Lua's - traced
+	# by hand: liblua.a does contain lua_call() et al. per `nm`, correctly positioned
+	# in the command, yet was reported undefined whenever one of these conflicts fired
+	# earlier in the same link). Rather than exclude each conflicting archive by name
+	# as new ones are discovered, just tell ld to keep the first definition and move on.
+	target_link_libraries(vcmiclientcommon PUBLIC
+		-Wl,--allow-multiple-definition
+		-Wl,--start-group
 		vcmi SDL2::SDL2 SDL2::Image SDL2::Mixer SDL2::TTF libsquish::libsquish
-)
+		pthread ${vitaAllStaticLibs}
+		-Wl,--end-group)
+else()
+	target_link_libraries(vcmiclientcommon PUBLIC
+			vcmi SDL2::SDL2 SDL2::Image SDL2::Mixer SDL2::TTF libsquish::libsquish
+	)
+endif()
 
 if(ENABLE_VIDEO)
 	target_compile_definitions(vcmiclientcommon PRIVATE ENABLE_VIDEO)
-	target_link_libraries(vcmiclientcommon PRIVATE
-		${ffmpeg_LIBRARIES}
-	)
+	if(NOT VITA)
+		# On Vita, ffmpeg's archives are already covered by the vitaAllStaticLibs group
+		# above (which must also satisfy ffmpeg's own circular internal references).
+		target_link_libraries(vcmiclientcommon PRIVATE
+			${ffmpeg_LIBRARIES}
+		)
+	endif()
 endif()
 
 target_include_directories(vcmiclientcommon PUBLIC
