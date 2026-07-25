@@ -136,7 +136,7 @@ SECTIONS
      line below, which just marks where symbol lookups consider "the data segment" to
      begin for other purposes. Padding needs to go here to actually widen the gap
      vita-elf-create has to work with; see the file header comment for why. */
-  . = . + 0x20000;
+  . = . + 0x40000;
   /* Exception handling  */
   .eh_frame       : ONLY_IF_RW { KEEP (*(.eh_frame)) *(.eh_frame.*) }
   .sframe         : ONLY_IF_RW { *(.sframe) *(.sframe.*) }

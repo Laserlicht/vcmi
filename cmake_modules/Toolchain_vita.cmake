@@ -52,7 +52,23 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-short-enums")
 # for the main project) - CMAKE_EXE_LINKER_FLAGS is a CACHE variable, so appending
 # unconditionally here duplicates the -Wl,-T flag on the second pass, which ld then
 # rejects ("linker script file ... appears multiple times"). Guard against reprocessing.
-if(NOT VCMI_VITA_LINKER_SCRIPT_APPLIED)
+#
+# A prior version of this guard used a separate `CACHE INTERNAL` boolean
+# (VCMI_VITA_LINKER_SCRIPT_APPLIED). That's wrong: CACHE variables persist in
+# CMakeCache.txt across *separate* `cmake` invocations, not just within one configure.
+# On any reconfigure of an existing build directory (e.g. touching a CMakeLists.txt,
+# which is exactly what adding a new source file does), the boolean was already TRUE
+# from the previous configure, so the `-Wl,-T` flag was never re-applied to the
+# (fresh, empty-for-this-run) CMAKE_EXE_LINKER_FLAGS at all - the build silently fell
+# back to vitasdk's *unmodified* default linker script, with none of the extra padding
+# below. This does not fail the build (nothing rejects a missing flag), it just quietly
+# reintroduces the "Cannot allocate N bytes for SCE data ...; segment overlaps"
+# vita-elf-create failure on packaging, with no compile/link-time symptom pointing at
+# the cause - confirmed by grepping the generated build.ninja for "vita-vcmi.ld" and
+# finding zero occurrences despite a "successful" object/archive build. Checking the
+# *current* value of CMAKE_EXE_LINKER_FLAGS directly (instead of a separate persisted
+# flag) is correct in both cases: it dedupes within one configure, and starts fresh
+# every time CMAKE_EXE_LINKER_FLAGS itself does.
+if(NOT CMAKE_EXE_LINKER_FLAGS MATCHES "vita-vcmi\\.ld")
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-T,${CMAKE_SOURCE_DIR}/vita/link/vita-vcmi.ld")
-	set(VCMI_VITA_LINKER_SCRIPT_APPLIED TRUE CACHE INTERNAL "")
 endif()
