@@ -737,6 +737,99 @@ jobs:
         archive: false
         path: ${{github.workspace}}/${{ env.VCMI_PACKAGE_FILE_NAME }}.deb
 
+  switch:
+    # named "Build (switch)" so the final summary picks it up like the build matrix jobs
+    name: Build (switch)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v7
+      with:
+        submodules: recursive
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Number
+      run: |
+        source '${{github.workspace}}/CI/get_package_name.sh'
+        VCMI_PACKAGE_FILE_NAME+="-switch"
+        echo VCMI_PACKAGE_FILE_NAME="$VCMI_PACKAGE_FILE_NAME" >> $GITHUB_ENV
+      env:
+        PULL_REQUEST: ${{ github.event.pull_request.number }}
+
+    - name: Build devkitPro deps image for Switch
+      uses: docker/build-push-action@v6
+      env:
+        DOCKER_BUILD_SUMMARY: false
+        DOCKER_BUILD_RECORD_UPLOAD: false
+      with:
+        context: .
+        file: switch/Dockerfile
+        target: switch-deps
+        tags: vcmi-switch-deps
+        load: true
+
+    # ccache lives in a runner directory bind-mounted into the container: a BuildKit
+    # cache mount would be private to the job's ephemeral builder and never hit
+    - name: ccache restore
+      id: ccachecache
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ runner.temp }}/ccache-switch
+        key: switch-ccache-${{ github.ref_name }}
+        restore-keys: |
+          switch-ccache-
+
+    - name: Build VCMI for Switch
+      run: |
+        mkdir -p "${{ runner.temp }}/ccache-switch"
+        docker run --rm --init --name vcmi-switch-ci --user "$(id -u):$(id -g)" -e HOME=/tmp -e CCACHE_DIR=/ccache \
+          -v "${{ github.workspace }}:/src" -v "${{ runner.temp }}/ccache-switch:/ccache" \
+          vcmi-switch-deps bash -c '
+            set -euo pipefail
+            ccache --set-config=compiler_check=content
+            ccache --set-config=hash_dir=false
+            ccache --set-config=sloppiness=pch_defines,time_macros
+            cmake --preset switch-release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            cmake --build --preset switch-release -j"$(nproc)"
+            ccache -s | tee /ccache/stats.txt'
+
+    # Save only on cache miss, GitHub caches are immutable per key
+    - name: ccache save
+      if: steps.ccachecache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ runner.temp }}/ccache-switch
+        key: ${{ steps.ccachecache.outputs.cache-primary-key }}
+
+    - name: Rename package
+      run: mv out/build/switch-release/bin/vcmiclient.nro "out/build/switch-release/bin/${{ env.VCMI_PACKAGE_FILE_NAME }}.nro"
+
+    - name: Upload Artifact
+      id: upload_artifact
+      uses: actions/upload-artifact@v7
+      with:
+        archive: false
+        path: ${{github.workspace}}/out/build/switch-release/bin/${{ env.VCMI_PACKAGE_FILE_NAME }}.nro
+
+    - name: Prepare partial JSON with build informations
+      env:
+        PLATFORM: switch
+        ARTIFACT_URL: ${{ steps.upload_artifact.outputs.artifact-url }}
+      run: |
+        python3 CI/emit_partial.py
+
+    - name: Upload partial JSON with build informations
+      uses: actions/upload-artifact@v7
+      with:
+        name: partial-json-switch
+        path: .summary/switch.json
+
   windows-installer:
     needs: build
     if: ${{ needs.build.result == 'success' }}
@@ -868,7 +961,7 @@ jobs:
           run: |
             find . -path ./.git -prune -o -path ./AI/FuzzyLite -prune -o -path ./test/googletest \
             -o -path ./osx  -prune -o -type f \
-            -not -name '*.png' -and -not -name '*.ttf' -and -not -name '*.wav' -and -not -name '*.webm' -and -not -name '*.ico' -and -not -name '*.bat' -and -not -name '*.cmd' -and -not -name '*.iss' -and -not -name '*.isl' -print0 | \
+            -not -name '*.png' -and -not -name '*.jpg' -and -not -name '*.ttf' -and -not -name '*.wav' -and -not -name '*.webm' -and -not -name '*.ico' -and -not -name '*.bat' -and -not -name '*.cmd' -and -not -name '*.iss' -and -not -name '*.isl' -print0 | \
             { ! xargs -0 grep -l -z -P '\r\n'; }
 
         - name: Validate JSON
@@ -889,7 +982,7 @@ jobs:
   final-summary:
     name: Build report
     if: always()
-    needs: [build, windows-installer, validate-code, test, upload-source-package]
+    needs: [build, windows-installer, validate-code, test, upload-source-package, switch]
     runs-on: ubuntu-24.04
     permissions:
       contents: read

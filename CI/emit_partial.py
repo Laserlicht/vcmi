@@ -27,6 +27,10 @@ def detect(platform: str) -> Tuple[str, List[str], str]:
         return ("ccache", ["ccache", "-s"], "macos")
     if platform == "ios":
         return ("ccache", ["ccache", "-s"], "ios")
+    if platform == "switch":
+        # ccache runs inside a container; its output is tee'd to a file we read instead
+        stats_file = pathlib.Path(os.environ.get("RUNNER_TEMP", "")) / "ccache-switch" / "stats.txt"
+        return ("ccache", ["cat", str(stats_file)], "switch")
     if platform.startswith("android"):
         return ("ccache", ["ccache", "-s"], "android")
     if platform.startswith("linux"):
@@ -96,6 +100,7 @@ def arch_label(platform: str) -> str:
         "android-64-intel": "x86_64",
         "linux-appimage-x64": "x86_64",
         "linux-appimage-arm64": "ARM64",
+        "switch": "AArch64 (NRO)",
     }
     return mapping.get(platform, platform)
 
