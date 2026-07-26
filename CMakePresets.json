@@ -36,11 +36,11 @@
         },
         {
             "name": "switch-release",
-            "displayName": "Nintendo Switch (devkitA64 + libnx)",
+            "displayName": "Switch (devkitA64 + libnx)",
             "inherits": "release-binary-dir",
             "generator": "Ninja",
-            "toolchainFile": "${sourceDir}/cmake_modules/Toolchain_switch.cmake",
             "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake_modules/Toolchain_switch.cmake",
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/switch-release",
                 "ENABLE_CLIENT": "ON",
@@ -423,6 +423,10 @@
             "name": "default-debug",
             "hidden": true,
             "configuration": "Debug"
+        },
+        {
+            "name": "switch-release",
+            "configurePreset": "switch-release"
         },
         {
             "name": "linux-clang-release",

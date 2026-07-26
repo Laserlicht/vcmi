@@ -1,17 +1,22 @@
 /*
- * concurrent_hash_map.h - sequential drop-in replacement for Intel oneTBB
+ * concurrent_hash_map.h, part of VCMI engine
  *
- * Part of the VCMI Nintendo Switch port. Backed by std::unordered_map. Because
- * everything is single-threaded, no locking is required, but the accessor /
- * const_accessor RAII handles are preserved so call sites compile and behave
- * identically.
+ * Authors: listed in file AUTHORS in main folder
  *
- * The HashCompare type follows the oneTBB convention: it provides hash(key) and
- * equal(a, b). VCMI uses two flavours:
- *   - static members (CBonusSystemNode::HashStringCompare), and
- *   - a functor data member + non-static equal (ObjectInstanceIDHash).
- * Calling them through an instance (hc.hash(k), hc.equal(a, b)) works for both.
+ * License: GNU General Public License v2.0 or later
+ * Full text of license available in license.txt file, in main folder
+ *
  */
+
+// Sequential stub backed by std::unordered_map; no locking needed, but the
+// accessor/const_accessor RAII handles are preserved so call sites compile and
+// behave identically.
+//
+// The HashCompare type follows the oneTBB convention: it provides hash(key) and
+// equal(a, b). VCMI uses two flavours - static members
+// (CBonusSystemNode::HashStringCompare), and a functor data member + non-static
+// equal (ObjectInstanceIDHash). Calling them through an instance (hc.hash(k),
+// hc.equal(a, b)) works for both.
 #pragma once
 
 #include <cstddef>

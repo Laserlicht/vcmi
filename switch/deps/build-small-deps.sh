@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+#
+# build-small-deps.sh, part of VCMI engine
+#
+# Authors: listed in file AUTHORS in main folder
+#
+# License: GNU General Public License v2.0 or later
+# Full text of license available in license.txt file, in main folder
+#
 # Cross-compile the small from-source dependencies VCMI needs for Nintendo Switch:
 #   - Lua 5.4.7  (plain Lua; LuaJIT is impossible on Switch - no JIT/W^X. VCMI's
 #                 luascript needs the 5.2+ API, so 5.4 rather than 5.1)

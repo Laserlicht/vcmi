@@ -411,18 +411,14 @@ public:
 	bfs::path binaryPath() const override;
 };
 
-// Writable storage is on the SD card ("sdmc:"); bundled data ships in the read-only
-// NRO romfs ("romfs:"). The cache/log must stay OUT of userDataPath(): that dir is
-// scanned recursively at startup and libnx's FAT returns EIO when stat-ing the live
-// log file, which would abort the scan. Keep it in an unscanned sibling directory.
+// writable storage on the SD card ("sdmc:"); bundled data in the read-only NRO romfs
 bfs::path VCMIDirsSwitch::userDataPath() const { return "sdmc:/switch/vcmi"; }
-bfs::path VCMIDirsSwitch::userCachePath() const { return "sdmc:/switch/vcmi-cache"; }
+bfs::path VCMIDirsSwitch::userCachePath() const { return userDataPath() / "cache"; }
 bfs::path VCMIDirsSwitch::userConfigPath() const { return userDataPath() / "config"; }
 
 std::vector<bfs::path> VCMIDirsSwitch::dataPaths() const
 {
-	// Order matters: later entries have higher priority in VCMI's virtual filesystem,
-	// so user-provided content on the SD card overrides the bundled romfs data.
+	// later entries take priority: SD card content overrides bundled romfs data
 	return {
 		binaryPath(),   // romfs:/ - bundled config, Mods/VCMI, scripts (read-only)
 		userDataPath(), // sdmc:/switch/vcmi - user's Heroes III data, extra mods, saves

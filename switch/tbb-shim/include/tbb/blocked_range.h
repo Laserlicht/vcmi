@@ -1,10 +1,15 @@
 /*
- * blocked_range.h - sequential drop-in replacement for Intel oneTBB
+ * blocked_range.h, part of VCMI engine
  *
- * Part of the VCMI Nintendo Switch port. Real oneTBB is not available on
- * devkitA64/libnx, so this header provides an API-faithful, single-threaded
- * implementation that preserves TBB's semantics exactly.
+ * Authors: listed in file AUTHORS in main folder
+ *
+ * License: GNU General Public License v2.0 or later
+ * Full text of license available in license.txt file, in main folder
+ *
  */
+
+// Real oneTBB is not available on devkitA64/libnx; this is an API-faithful,
+// single-threaded implementation that preserves TBB's semantics exactly.
 #pragma once
 
 #include <cstddef>

@@ -85,6 +85,12 @@ public:
 	CTextInput(const Rect & Pos, const Point & bgOffset, const ImagePath & bgName);
 	CTextInput(const Rect & Pos, std::shared_ptr<IImage> srf);
 
+#ifdef VCMI_SWITCH
+	/// Shows the native Switch software keyboard seeded with the given text and
+	/// returns the edited string, or nullopt if it was cancelled or unavailable.
+	static std::optional<std::string> showNativeKeyboard(const std::string & initialText);
+#endif
+
 	/// Returns currently entered text. May not match visible text
 	const std::string & getText() const;
 

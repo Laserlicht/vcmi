@@ -1,9 +1,15 @@
 /*
- * global_control.h - sequential drop-in replacement for Intel oneTBB
+ * global_control.h, part of VCMI engine
  *
- * Part of the VCMI Nintendo Switch port. Settings are recorded for API
- * completeness but have no effect, since all work runs on the calling thread.
+ * Authors: listed in file AUTHORS in main folder
+ *
+ * License: GNU General Public License v2.0 or later
+ * Full text of license available in license.txt file, in main folder
+ *
  */
+
+// Settings are recorded for API completeness but have no effect, since all
+// work runs on the calling thread.
 #pragma once
 
 #include <cstddef>

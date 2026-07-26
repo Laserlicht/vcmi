@@ -28,8 +28,7 @@ class AsyncRunner : boost::noncopyable
 	tbb::global_control control;
 
 #ifdef VCMI_SWITCH
-	// The Switch TBB shim is sequential; an AI turn blocks on the network thread, so
-	// running it inline would deadlock. AI runners opt into a real (joinable) thread.
+	// the sequential TBB shim would deadlock an inline AI turn; use a real thread instead
 	bool useRealThreads;
 	std::mutex switchMutex;
 	std::vector<std::thread> switchThreads;

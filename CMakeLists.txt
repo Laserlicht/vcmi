@@ -16,19 +16,28 @@ if(APPLE AND NOT IOS)
 	set(MACOS 1)
 endif()
 
-# Nintendo Switch: the devkitPro toolchain sets CMAKE_SYSTEM_NAME to NintendoSwitch.
-# Expose a SWITCH variable for the platform branches below (Toolchain_switch.cmake
-# also sets it explicitly). Switch is treated as a mobile-class target throughout.
+# devkitPro's toolchain sets CMAKE_SYSTEM_NAME to NintendoSwitch; expose a SWITCH
+# variable for the platform branches below.
 if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch" OR CMAKE_SYSTEM_NAME STREQUAL "Horizon")
 	set(SWITCH 1)
 endif()
 
 if(SWITCH)
-	# Provide newlib/libnx compatibility shims (sys/uio.h, sys/un.h, missing errno
-	# values, asio tweaks) to every target. The compat header is force-included so
-	# its defines land before any dependency header (e.g. boost::asio) is parsed.
+	# newlib/libnx compatibility shims, force-included so they precede any dependency header
 	include_directories(BEFORE "${CMAKE_SOURCE_DIR}/switch/compat")
 	add_compile_options("-include" "${CMAKE_SOURCE_DIR}/switch/compat/switch_compat.h")
+
+	# devkitPro builds with -ffunction-sections/-fdata-sections + --gc-sections, which
+	# silently strips indirectly-referenced code (vtables, codec tables). Compile our
+	# objects as monolithic sections; portlibs keep theirs, so their unused (and
+	# partially unlinkable) GPU-driver code is still discarded.
+	add_compile_options(-fno-function-sections -fno-data-sections)
+
+	# CMake does not predefine the WHOLE_ARCHIVE link feature for this platform
+	set(CMAKE_C_LINK_LIBRARY_USING_WHOLE_ARCHIVE "-Wl,--whole-archive" "<LINK_ITEM>" "-Wl,--no-whole-archive")
+	set(CMAKE_C_LINK_LIBRARY_USING_WHOLE_ARCHIVE_SUPPORTED TRUE)
+	set(CMAKE_CXX_LINK_LIBRARY_USING_WHOLE_ARCHIVE "-Wl,--whole-archive" "<LINK_ITEM>" "-Wl,--no-whole-archive")
+	set(CMAKE_CXX_LINK_LIBRARY_USING_WHOLE_ARCHIVE_SUPPORTED TRUE)
 endif()
 
 # Use Visual Studio's latest debugger information format settings.
@@ -132,11 +141,7 @@ if(IOS OR ANDROID OR SWITCH)
 	set(ENABLE_DISCORD OFF)
 
 	if(SWITCH)
-		# Switch profile: disable the bits that are unavailable on the platform.
-		#  - ENABLE_MMAI OFF: the ML battle AI needs onnxruntime, which has no Switch build.
-		#  - ENABLE_INNOEXTRACT OFF: GOG installer extraction is a launcher-only feature.
-		# ENABLE_VIDEO is left at its default (ON): ffmpeg is provided by portlibs and its
-		# static dependency chain (dav1d/bz2/z) is linked explicitly in client/CMakeLists.txt.
+		# MMAI needs onnxruntime (no Switch build); innoextract is launcher-only
 		set(ENABLE_MMAI OFF CACHE BOOL "" FORCE)
 		set(ENABLE_INNOEXTRACT OFF CACHE BOOL "" FORCE)
 	endif()
@@ -638,11 +643,7 @@ endif()
 
 if(NOT ENABLE_MINIMAL_LIB)
 	if(SWITCH)
-		# Real Intel oneTBB is unavailable on Nintendo Switch. Use the bundled
-		# header-only sequential shim that implements the subset of the TBB API
-		# VCMI uses (parallel_for/reduce, blocked_range, task_arena/group,
-		# global_control and the concurrent containers) - everything runs
-		# single-threaded. See switch/tbb-shim/.
+		# oneTBB is unavailable on Switch - use the bundled header-only sequential shim
 		add_library(TBB::tbb INTERFACE IMPORTED)
 		set_target_properties(TBB::tbb PROPERTIES
 			INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/switch/tbb-shim/include")
@@ -710,10 +711,7 @@ elseif(ANDROID)
 	set(androidQtBuildDir "${CMAKE_BINARY_DIR}/android-build")
 	set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${androidQtBuildDir}/${LIB_DIR}")
 elseif(SWITCH)
-	# On Switch the "install tree" becomes the NRO's romfs. Everything goes flat
-	# into the romfs staging directory (CMAKE_INSTALL_PREFIX), so that config/,
-	# Mods/ and scripts/ are reachable as romfs:/config, romfs:/Mods, romfs:/scripts
-	# at runtime (see VCMIDirsSwitch).
+	# the install tree becomes the NRO's romfs: config/, Mods/, scripts/ end up as romfs:/...
 	set(BIN_DIR "." CACHE STRING "Where to install binaries")
 	set(LIB_DIR "." CACHE STRING "Where to install main library")
 	set(DATA_DIR "." CACHE STRING "Where to install data files")

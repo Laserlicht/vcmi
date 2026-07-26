@@ -46,7 +46,11 @@ AIGateway::AIGateway()
 	destinationTeleport = ObjectInstanceID();
 	destinationTeleportPos = int3(-1);
 	nullkiller.reset(new Nullkiller());
+#ifndef VCMI_SWITCH
+	asyncTasks = std::make_unique<AsyncRunner>();
+#else
 	asyncTasks = std::make_unique<AsyncRunner>(true); // Switch: run the AI turn on a real thread
+#endif
 }
 
 AIGateway::~AIGateway()

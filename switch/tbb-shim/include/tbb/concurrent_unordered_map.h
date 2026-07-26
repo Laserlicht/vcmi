@@ -1,8 +1,14 @@
 /*
- * concurrent_unordered_map.h - sequential drop-in replacement for Intel oneTBB
+ * concurrent_unordered_map.h, part of VCMI engine
  *
- * Part of the VCMI Nintendo Switch port. Backed by std::unordered_map.
+ * Authors: listed in file AUTHORS in main folder
+ *
+ * License: GNU General Public License v2.0 or later
+ * Full text of license available in license.txt file, in main folder
+ *
  */
+
+// Sequential stub backed by std::unordered_map.
 #pragma once
 
 #include <cstddef>

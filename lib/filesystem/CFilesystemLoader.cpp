@@ -208,8 +208,7 @@ std::unordered_map<ResourcePath, boost::filesystem::path> CFilesystemLoader::lis
 	catch (const boost::filesystem::filesystem_error & e)
 	{
 #ifdef VCMI_SWITCH
-		// libnx FAT returns EIO when stat-ing a file open for writing; keep what we
-		// gathered and continue instead of aborting the whole data source.
+		// libnx FAT returns EIO when stat-ing a file open for writing; keep what we have
 		logGlobal->warn("Filesystem scan of '%s' stopped early: %s", baseDirectory.string(), e.what());
 #else
 		throw;
@@ -223,8 +222,7 @@ std::string CFilesystemLoader::getFullFileURI(const ResourcePath& resourceName) 
 {
 	auto filePath = getResourceName(resourceName);
 #ifdef VCMI_SWITCH
-	// canonical() fails (EINVAL) on libnx device paths (sdmc:/, romfs:/); FAT has no
-	// symlinks so the path is already canonical.
+	// canonical() fails on libnx device paths (sdmc:/, romfs:/)
 	return TextOperations::filesystemPathToUtf8(*filePath);
 #else
 	auto path = boost::filesystem::canonical(*filePath);

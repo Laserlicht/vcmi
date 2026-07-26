@@ -25,6 +25,7 @@
 #include "../render/Canvas.h"
 #include "../render/IScreenHandler.h"
 #include "AdventureMapInterface.h"
+#include "../widgets/CTextInput.h"
 #include "../windows/CMessage.h"
 
 #include "../../lib/CConfigHandler.h"
@@ -260,6 +261,14 @@ void CInGameConsole::startEnteringText()
 	if (!isActive())
 		return;
 
+#ifdef VCMI_SWITCH
+	// the native Switch keyboard is modal and its OK is the only "Enter" there is -
+	// collect the whole line and submit it directly
+	if(auto entered = CTextInput::showNativeKeyboard(""))
+		processEnteredText(*entered);
+	return;
+#endif
+
 	if(isEnteringText())
 	{
 		// force-reset text input to re-show on-screen keyboard
@@ -281,30 +290,35 @@ void CInGameConsole::startEnteringText()
 	showRecentChatHistory();
 }
 
-void CInGameConsole::endEnteringText(bool processEnteredText)
+void CInGameConsole::processEnteredText(const std::string & txt)
+{
+	if(txt.empty())
+		return;
+
+	previouslyEntered.push_back(txt);
+
+	if(txt.at(0) == '/')
+	{
+		//some commands like gosolo don't work when executed from GUI thread
+		auto threadFunction = [=]()
+		{
+			setThreadName("processCommand");
+			ClientCommandManager commandController;
+			commandController.processCommand(txt.substr(1), true);
+		};
+
+		std::thread clientCommandThread(threadFunction);
+		clientCommandThread.detach();
+	}
+	else
+		GAME->server().getGameChat().sendMessageGameplay(txt);
+}
+
+void CInGameConsole::endEnteringText(bool shouldProcessEnteredText)
 {
 	prevEntDisp = -1;
-	if(processEnteredText)
-	{
-		std::string txt = enteredText.substr(0, enteredText.size()-1);
-		previouslyEntered.push_back(txt);
-
-		if(txt.at(0) == '/')
-		{
-			//some commands like gosolo don't work when executed from GUI thread
-			auto threadFunction = [=]()
-			{
-				setThreadName("processCommand");
-				ClientCommandManager commandController;
-				commandController.processCommand(txt.substr(1), true);
-			};
-
-			std::thread clientCommandThread(threadFunction);
-			clientCommandThread.detach();
-		}
-		else
-			GAME->server().getGameChat().sendMessageGameplay(txt);
-	}
+	if(shouldProcessEnteredText)
+		processEnteredText(enteredText.substr(0, enteredText.size()-1));
 	enteredText.clear();
 
 	auto statusbar = currentStatusBar.lock();

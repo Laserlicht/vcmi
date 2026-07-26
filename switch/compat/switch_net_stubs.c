@@ -1,10 +1,13 @@
 /*
- * switch_net_stubs.c - link-time C-library stubs for Nintendo Switch (devkitA64 + libnx).
+ * switch_net_stubs.c, part of VCMI engine
  *
- * Provides the handful of POSIX functions that boost::asio / boost reference but that
- * newlib/libnx does not implement. VCMI only uses IPv4 TCP, so most of these are either
- * never meaningfully exercised or have a faithful enough emulation.
+ * Authors: listed in file AUTHORS in main folder
+ *
+ * License: GNU General Public License v2.0 or later
+ * Full text of license available in license.txt file, in main folder
+ *
  */
+
 #include <net/if.h>
 #include <errno.h>
 #include <stddef.h>

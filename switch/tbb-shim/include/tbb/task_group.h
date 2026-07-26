@@ -1,9 +1,15 @@
 /*
- * task_group.h - sequential drop-in replacement for Intel oneTBB
+ * task_group.h, part of VCMI engine
  *
- * Part of the VCMI Nintendo Switch port. Tasks run immediately on the calling
- * thread, so there is never anything to wait for.
+ * Authors: listed in file AUTHORS in main folder
+ *
+ * License: GNU General Public License v2.0 or later
+ * Full text of license available in license.txt file, in main folder
+ *
  */
+
+// Tasks run immediately on the calling thread, so there is never anything to
+// wait for.
 #pragma once
 
 #include <functional>

@@ -231,7 +231,7 @@ ScreenHandler::ScreenHandler()
 #endif
 
 #ifdef VCMI_SWITCH
-	// Bind face buttons by Nintendo position: A (right) = accept, B (bottom) = cancel.
+	// bind face buttons by position: A (right) = accept, B (bottom) = cancel
 	SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "0");
 #endif
 
@@ -496,8 +496,7 @@ SDL_Window * ScreenHandler::createWindow()
 #endif
 
 #ifdef VCMI_SWITCH
-	// Switch always renders fullscreen at the native resolution (720p handheld / 1080p
-	// docked). Required: without a return here createWindow() falls through (UB).
+	// always fullscreen at native resolution (720p handheld / 1080p docked)
 	return createWindowImpl(getPreferredWindowResolution(), 0, false);
 #endif
 }

@@ -1,13 +1,13 @@
 /*
- * sys/uio.h - compatibility shim for Nintendo Switch (devkitA64 + libnx, newlib).
+ * uio.h, part of VCMI engine
  *
- * newlib/libnx does not ship <sys/uio.h>, but it does define `struct iovec`
- * (in <sys/_iovec.h>, also pulled in by <sys/socket.h>) and provides the
- * scatter-gather socket calls recvmsg()/sendmsg(). boost::asio only includes
- * this header for the iovec definition; for sockets it uses recvmsg/sendmsg,
- * not readv/writev. We still declare readv/writev so any header that references
- * them compiles - VCMI only uses TCP sockets, so they are never actually called.
+ * Authors: listed in file AUTHORS in main folder
+ *
+ * License: GNU General Public License v2.0 or later
+ * Full text of license available in license.txt file, in main folder
+ *
  */
+
 #ifndef _VCMI_SWITCH_SYS_UIO_H
 #define _VCMI_SWITCH_SYS_UIO_H
 
@@ -18,6 +18,9 @@
 extern "C" {
 #endif
 
+// newlib/libnx has no <sys/uio.h>; boost::asio only includes it for the iovec
+// definition (its socket code uses recvmsg/sendmsg, not readv/writev). Declared
+// here so any header referencing them compiles - never actually called.
 ssize_t readv(int __fd, const struct iovec * __iov, int __iovcnt);
 ssize_t writev(int __fd, const struct iovec * __iov, int __iovcnt);
 

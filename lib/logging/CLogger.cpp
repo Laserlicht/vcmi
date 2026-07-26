@@ -391,8 +391,7 @@ void CLogConsoleTarget::write(const LogRecord & record)
 	}
 	os_log_with_type(currentLog, type, "%{public}s", message.c_str());
 #elif defined(VCMI_SWITCH)
-	// Switch has no CConsoleHandler (compiled out on mobile); log to stdout/stderr,
-	// captured by nxlink during development.
+	// no CConsoleHandler on mobile; log to stdout/stderr (captured by nxlink)
 	{
 		const bool printToStdErr = record.level >= ELogLevel::WARN;
 		std::lock_guard _(mx);
@@ -443,16 +442,14 @@ CLogFileTarget::CLogFileTarget(const boost::filesystem::path & filePath, bool ap
 void CLogFileTarget::write(const LogRecord & record)
 {
 #ifdef VCMI_SWITCH
-	// Keep the on-SD-card log small and fast: skip trace/debug (the bulk of startup
-	// logging) before the costly formatting below.
+	// keep the on-SD-card log small and fast: skip trace/debug before the costly formatting
 	if(record.level < ELogLevel::INFO)
 		return;
 #endif
 	std::string message = formatter.format(record); //formatting is slow, do it outside the lock
 	std::lock_guard _(mx);
 #ifdef VCMI_SWITCH
-	// std::endl would fsync every line to the SD card (FAT); buffer instead and only
-	// flush warnings/errors so crash-relevant output is still persisted.
+	// std::endl would fsync every line to the SD card; only flush warnings/errors
 	file << message << '\n';
 	if(record.level >= ELogLevel::WARN)
 		file.flush();

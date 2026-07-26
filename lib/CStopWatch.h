@@ -13,10 +13,13 @@
 	#include <sys/types.h>
 	#include <sys/time.h>
 	#include <sys/resource.h>
-	#define TO_MS_DIVISOR (1000)
+	// clock() below returns microseconds
+	#define TICKS_TO_MS(t) ((t) / 1000)
 #else
 	#include <ctime>
-	#define TO_MS_DIVISOR (CLOCKS_PER_SEC / 1000)
+	// multiply before dividing: CLOCKS_PER_SEC may be < 1000 (newlib: 100), where a
+	// (CLOCKS_PER_SEC / 1000) divisor truncates to a division by zero (GCC 15 traps it)
+	#define TICKS_TO_MS(t) ((t) * 1000 / CLOCKS_PER_SEC)
 #endif
 
 class CStopWatch
@@ -37,7 +40,7 @@ public:
 	{
 		si64 ret = clock() - last;
 		last = clock();
-		return ret / TO_MS_DIVISOR;
+		return TICKS_TO_MS(ret);
 	}
 	void update()
 	{
@@ -49,7 +52,7 @@ public:
 	}
 	si64 memDif()
 	{
-		return (clock()-mem) / TO_MS_DIVISOR;
+		return TICKS_TO_MS(clock() - mem);
 	}
 
 private:

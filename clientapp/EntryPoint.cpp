@@ -123,8 +123,7 @@ static void prog_help(const po::options_description &opts)
 }
 
 #ifdef VCMI_SWITCH
-// Boost the CPU clock during the CPU-bound startup loading, restored once the main menu
-// is active. No-op unless the NRO runs in application (title-takeover) mode.
+// boost the CPU clock during startup loading (no-op outside title-takeover mode)
 static void switchSetCpuBoost(bool enable)
 {
 	appletSetCpuBoostMode(enable ? ApmCpuBoostMode_FastLoad : ApmCpuBoostMode_Normal);
@@ -133,8 +132,7 @@ static void switchSetCpuBoost(bool enable)
 
 #if defined(VCMI_WINDOWS) && !defined(__GNUC__) && defined(VCMI_WITH_DEBUG_CONSOLE)
 int wmain(int argc, wchar_t* argv[])
-// On Switch, SDL2 does not redefine main()->SDL_main (SDL_main.h has no __SWITCH__
-// case), and libSDL2main.a is empty, so libnx's crt0 calls our main() directly.
+// on Switch, SDL2 does not redefine main() -> SDL_main; libnx's crt0 calls main() directly
 #elif defined(VCMI_MOBILE) && !defined(VCMI_SWITCH)
 int SDL_main(int argc, char *argv[])
 #else
@@ -148,8 +146,7 @@ int main(int argc, char * argv[])
 #endif
 
 #ifdef VCMI_SWITCH
-	// libnx init before any filesystem/network access: romfs:/ holds the bundled data,
-	// sockets are needed for multiplayer. Return codes ignored (safe to call twice).
+	// libnx init must precede any filesystem/network access
 	romfsInit();
 	socketInitializeDefault();
 	setenv("LANG", "C", 1); // boost on newlib needs a sane locale, as on Android
@@ -242,7 +239,7 @@ int main(int argc, char * argv[])
 
 	CBasicLogConfigurator logConfigurator(logPath, &console);
 #else
-	// No interactive stdin console on iOS / Nintendo Switch
+	// No interactive stdin console on iOS / Switch
 	CBasicLogConfigurator logConfigurator(logPath, nullptr);
 #endif
 

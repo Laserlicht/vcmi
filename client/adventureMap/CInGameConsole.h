@@ -43,6 +43,9 @@ private:
 
 	void showRecentChatHistory();
 	void addMessageSilent(const std::string & timeFormatted, const std::string & senderName, const std::string & messageText);
+
+	/// Sends the given line as chat message, or runs it as a '/' client command
+	void processEnteredText(const std::string & txt);
 public:
 	void addMessage(const std::string & timeFormatted, const std::string & senderName, const std::string & messageText);
 
@@ -55,7 +58,7 @@ public:
 	bool captureThisKey(EShortcut key) override;
 
 	void startEnteringText();
-	void endEnteringText(bool processEnteredText);
+	void endEnteringText(bool shouldProcessEnteredText);
 	void refreshEnteredText();
 
 	CInGameConsole();

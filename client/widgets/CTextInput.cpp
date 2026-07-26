@@ -26,11 +26,7 @@
 #ifdef VCMI_SWITCH
 #include <switch.h>
 
-namespace
-{
-/// Shows the Switch system software keyboard seeded with the current text and returns
-/// the edited string, or nullopt if it could not be shown (caller falls back to SDL).
-std::optional<std::string> showSwitchSoftwareKeyboard(const std::string & initialText)
+std::optional<std::string> CTextInput::showNativeKeyboard(const std::string & initialText)
 {
 	SwkbdConfig kbd;
 	if(R_FAILED(swkbdCreate(&kbd, 0)))
@@ -48,7 +44,6 @@ std::optional<std::string> showSwitchSoftwareKeyboard(const std::string & initia
 	if(R_FAILED(rc))
 		return std::nullopt;
 	return std::string(buffer);
-}
 }
 #endif
 
@@ -248,7 +243,7 @@ void CTextInput::clickPressed(const Point & cursorPosition)
 {
 #ifdef VCMI_SWITCH
 	// Prefer the native Switch keyboard; fall back to SDL's inline one (giveFocus) below.
-	if(auto edited = showSwitchSoftwareKeyboard(currentText))
+	if(auto edited = showNativeKeyboard(currentText))
 	{
 		const std::string oldText = currentText;
 		currentText = *edited;

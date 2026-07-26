@@ -39,7 +39,14 @@ else()
 	endif()
 endif()
 
-target_link_libraries(vcmiclient PRIVATE vcmiclientcommon)
+if(SWITCH)
+	# --gc-sections (devkitPro default) silently drops indirectly-referenced code from lazily
+	# processed archives (e.g. ffmpeg video player, SDL2_mixer codecs) - force all client code
+	# into the binary. --gc-sections itself must stay: portlibs' libEGL.a is not fully linkable.
+	target_link_libraries(vcmiclient PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,vcmiclientcommon>")
+else()
+	target_link_libraries(vcmiclient PRIVATE vcmiclientcommon)
+endif()
 
 if(ENABLE_SINGLE_APP_BUILD AND ENABLE_LAUNCHER)
 	target_link_libraries(vcmiclient PRIVATE vcmilauncher)
@@ -119,10 +126,7 @@ elseif(ANDROID)
 	)
 	add_dependencies(android_deploy vcmiclient)
 elseif(SWITCH)
-	# Package the Switch homebrew NRO. The bundled engine data (config, the built-in
-	# VCMI mod and scripts) is staged into a romfs directory, NACP metadata is generated
-	# and elf2nro produces vcmiclient.nro next to the linked .elf.
-	# (The player's Heroes III data lives on the SD card at sdmc:/switch/vcmi, not in romfs.)
+	# Package the NRO: stage bundled data into romfs, generate NACP, run elf2nro
 	set(switchRomfsDir "${CMAKE_BINARY_DIR}/romfs")
 	set(switchNacp "${CMAKE_BINARY_DIR}/vcmiclient.nacp")
 	if(EXISTS "${CMAKE_SOURCE_DIR}/switch/icon.jpg")

@@ -1,13 +1,16 @@
 /*
- * switch_compat.h - VCMI Nintendo Switch compatibility shim.
+ * switch_compat.h, part of VCMI engine
  *
- * This header is force-included (-include) into every translation unit of the
- * Switch build. It papers over the small gaps between newlib/libnx and the
- * POSIX surface that VCMI's dependencies (notably boost::asio) expect.
+ * Authors: listed in file AUTHORS in main folder
  *
- * Keep it tiny and side-effect free: only macro definitions and the minimal
- * includes needed to define missing constants.
+ * License: GNU General Public License v2.0 or later
+ * Full text of license available in license.txt file, in main folder
+ *
  */
+
+// Force-included (-include) into every translation unit of the Switch build -
+// see CMakeLists.txt. Papers over gaps between newlib/libnx and the POSIX
+// surface VCMI's dependencies (notably boost::asio) expect.
 #ifndef VCMI_SWITCH_COMPAT_H
 #define VCMI_SWITCH_COMPAT_H
 

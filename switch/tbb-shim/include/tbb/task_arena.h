@@ -1,12 +1,18 @@
 /*
- * task_arena.h - sequential drop-in replacement for Intel oneTBB
+ * task_arena.h, part of VCMI engine
  *
- * Part of the VCMI Nintendo Switch port. There is exactly one execution
- * context (the calling thread), so concurrency is always 1 and the current
- * thread index is always 0. These two values MUST stay consistent: VCMI sizes
- * per-thread buffers by max_concurrency() and indexes them by
- * current_thread_index() (see AI/Nullkiller2/Pathfinding/AINodeStorage.cpp).
+ * Authors: listed in file AUTHORS in main folder
+ *
+ * License: GNU General Public License v2.0 or later
+ * Full text of license available in license.txt file, in main folder
+ *
  */
+
+// There is exactly one execution context (the calling thread), so concurrency
+// is always 1 and the current thread index is always 0. These two values MUST
+// stay consistent: VCMI sizes per-thread buffers by max_concurrency() and
+// indexes them by current_thread_index() (see
+// AI/Nullkiller2/Pathfinding/AINodeStorage.cpp).
 #pragma once
 
 #include "task_group.h"

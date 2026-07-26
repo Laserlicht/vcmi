@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+#
+# build-iconv.sh, part of VCMI engine
+#
+# Authors: listed in file AUTHORS in main folder
+#
+# License: GNU General Public License v2.0 or later
+# Full text of license available in license.txt file, in main folder
+#
 # Cross-compile GNU libiconv for Nintendo Switch (devkitA64 + libnx, newlib).
 # newlib ships <iconv.h> but no iconv symbols, and VCMI's find_package(Iconv REQUIRED)
 # needs a real implementation for Heroes III text codepage conversion (CP1250/1251/...).
