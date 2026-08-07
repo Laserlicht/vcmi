@@ -18,7 +18,13 @@ sudo eatmydata apt -yq --no-install-recommends \
   install \
   libboost-dev libboost-filesystem-dev libboost-date-time-dev \
   libboost-program-options-dev libboost-iostreams-dev \
-  libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
+  libasound2-dev libpulse-dev libpipewire-0.3-dev \
+  libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev \
+  libxi-dev libxss-dev libxtst-dev libxkbcommon-dev \
+  libwayland-dev wayland-protocols libdecor-0-dev \
+  libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev \
+  libdbus-1-dev libudev-dev libibus-1.0-dev \
+  libpng-dev libfreetype-dev libharfbuzz-dev \
   qtbase5-dev qtbase5-dev-tools qttools5-dev qttools5-dev-tools \
   libqt5svg5-dev \
   ninja-build zlib1g-dev libavformat-dev libswscale-dev libtbb-dev \
@@ -28,3 +34,9 @@ sudo eatmydata apt -yq --no-install-recommends \
 sudo rm -f  "$APT_CACHE/lock" || true
 sudo rm -rf "$APT_CACHE/partial" || true
 sudo chown -R "$USER:$USER" "$APT_CACHE"
+
+# No distribution ships a usable SDL3 stack yet, so build it from source into a
+# cacheable prefix. The script skips components that are already present, and
+# exports the prefix to the remaining steps of the job.
+SDL3_PREFIX="${SDL3_PREFIX:-${RUNNER_TEMP:-/tmp}/sdl3}"
+"$(dirname "${BASH_SOURCE[0]}")/linux_sdl3.sh" --prefix "$SDL3_PREFIX"

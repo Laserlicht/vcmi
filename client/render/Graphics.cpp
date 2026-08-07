@@ -29,7 +29,7 @@
 #include "../../lib/modding/ModScope.h"
 #include "../../lib/GameLibrary.h"
 
-#include <SDL_surface.h>
+#include <SDL3/SDL_surface.h>
 
 Graphics * graphics = nullptr;
 

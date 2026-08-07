@@ -11,7 +11,7 @@
 
 #import <UIKit/UIKit.h>
 
-#include <SDL_events.h>
+#include <SDL3/SDL_events.h>
 
 NS_ASSUME_NONNULL_BEGIN
 

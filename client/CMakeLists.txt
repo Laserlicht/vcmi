@@ -492,9 +492,6 @@ if(WIN32)
 			PROJECT_LABEL "VCMI_vcmiclientcommon"
 	)
 	set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT vcmiclientcommon)
-	if(NOT ENABLE_DEBUG_CONSOLE)
-		target_link_libraries(vcmiclientcommon SDL2::SDL2main)
-	endif()
 	target_compile_definitions(vcmiclientcommon PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
 elseif(IOS)
 	target_link_libraries(vcmiclientcommon PRIVATE
@@ -514,7 +511,7 @@ endif()
 target_link_libraries(vcmiclientcommon PRIVATE vcmiservercommon)
 
 target_link_libraries(vcmiclientcommon PUBLIC
-		vcmi SDL2::SDL2 SDL2::Image SDL2::Mixer SDL2::TTF libsquish::libsquish
+		vcmi SDL3::Core SDL3::Image SDL3::Mixer SDL3::TTF libsquish::libsquish
 )
 
 if(ENABLE_VIDEO)

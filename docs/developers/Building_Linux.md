@@ -12,7 +12,7 @@ Older distributions and compilers might work, but they aren't tested by Github C
 To compile, the following packages (and their development counterparts) are needed to build:
 
 - CMake
-- SDL2 with devel packages: mixer, image, ttf
+- SDL3 with devel packages: mixer, image, ttf
 - minizip or minizip-ng
 - zlib and zlib-devel
 - `LuaJIT`, or Lua (if LuaJit is not available)
@@ -30,10 +30,25 @@ For Ubuntu and Debian you need to:
 1. Install this list of packages:
 
     ```sh
-    sudo apt-get install cmake g++ clang libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-mixer-dev zlib1g-dev libavformat-dev libswscale-dev libboost-dev libboost-filesystem-dev libboost-program-options-dev libboost-date-time-dev libboost-iostreams-dev qt6-base-dev qt6-base-dev-tools qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools qt6-svg-dev libtbb-dev libluajit-5.1-dev liblzma-dev libsqlite3-dev libminizip-dev libsquish-dev libfmt-dev ninja-build ccache
+    sudo apt-get install cmake g++ clang zlib1g-dev libavformat-dev libswscale-dev libboost-dev libboost-filesystem-dev libboost-program-options-dev libboost-date-time-dev libboost-iostreams-dev qt6-base-dev qt6-base-dev-tools qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools qt6-svg-dev libtbb-dev libluajit-5.1-dev liblzma-dev libsqlite3-dev libminizip-dev libsquish-dev libfmt-dev ninja-build ccache
     ```
 
-2. Optionally, install `onnxruntime`:
+2. Install SDL3 and its satellite libraries.
+
+    Distributions do not ship a new enough SDL3 stack yet, so build it from
+    source with the helper script (it skips components that are already
+    present):
+
+    ```sh
+    ./CI/before_install/linux_sdl3.sh --install-deps
+    ```
+
+    Pass `--static` to build the libraries for static linking, `--prefix DIR`
+    to install somewhere other than `/usr/local`, and `--check` to only report
+    what is already installed. When installing into a custom prefix, pass
+    `-DCMAKE_PREFIX_PATH=DIR` to `cmake` during the configure step later.
+
+3. Optionally, install `onnxruntime`:
 
     - On Debian 13+ and Ubuntu 24.10+, use apt:
 
@@ -64,7 +79,7 @@ sudo apt-get build-dep vcmi
 ### On RPM-based distributions (e.g. Fedora)
 
 ```sh
-sudo yum install cmake gcc-c++ SDL2-devel SDL2_image-devel SDL2_ttf-devel SDL2_mixer-devel boost boost-devel boost-filesystem boost-system boost-thread boost-program-options boost-locale boost-iostreams zlib-devel ffmpeg-free-devel qt5-qtbase-devel qt5-qtsvg-devel qt5-qttools-devel tbb-devel luajit-devel xz-devel sqlite-devel minizip-devel onnxruntime-devel libsquish-devel libfmt-devel ccache
+sudo yum install cmake gcc-c++ SDL3-devel SDL3_image-devel SDL3_ttf-devel SDL3_mixer-devel boost boost-devel boost-filesystem boost-system boost-thread boost-program-options boost-locale boost-iostreams zlib-devel ffmpeg-free-devel qt5-qtbase-devel qt5-qtsvg-devel qt5-qttools-devel tbb-devel luajit-devel xz-devel sqlite-devel minizip-devel onnxruntime-devel libsquish-devel libfmt-devel ccache
 ```
 
 ### On Arch-based distributions
@@ -87,7 +102,7 @@ stdenv.mkDerivation {
   buildInputs = [
     cmake clang clang-tools llvm ccache ninja
     boost zlib minizip xz
-    SDL2 SDL2_ttf SDL2_net SDL2_image SDL2_sound SDL2_mixer SDL2_gfx
+    SDL3 SDL3_ttf SDL3_image SDL3_mixer
     ffmpeg tbb vulkan-headers libxkbcommon
     qt6.full luajit onnxruntime
   ];

@@ -63,11 +63,11 @@ class ScreenHandler final : public IScreenHandler
 	/// Returns index of display on which window should be created
 	int getPreferredDisplayIndex() const;
 
-	/// Returns index of rendering driver preferred by player or -1 if no preference
-	int getPreferredRenderingDriver() const;
+	/// Returns name of rendering driver preferred by player or empty string if no preference
+	std::string getPreferredRenderingDriver() const;
 
 	/// Creates SDL window with specified parameters
-	SDL_Window * createWindowImpl(Point dimensions, int flags, bool center);
+	SDL_Window * createWindowImpl(Point dimensions, uint64_t flags, bool center);
 
 	/// Creates SDL window using OS-specific settings & user-specific config
 	SDL_Window * createWindow();

@@ -16,7 +16,7 @@
 #include "../../lib/filesystem/Filesystem.h"
 #include "../../lib/Point.h"
 
-#include <SDL_pixels.h>
+#include <SDL3/SDL_pixels.h>
 
 enum class DefType : uint32_t
 {

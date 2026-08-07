@@ -245,7 +245,7 @@ endif()
 if(ANDROID)
 	target_link_libraries(vcmilauncher Qt${QT_VERSION_MAJOR}::AndroidExtras)
 elseif(NOT IOS)
-	target_link_libraries(vcmilauncher SDL2::SDL2)
+	target_link_libraries(vcmilauncher SDL3::Core)
 endif()
 
 if(ENABLE_STATIC_LIBS OR NOT (ENABLE_EDITOR AND ENABLE_LAUNCHER))

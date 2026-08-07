@@ -13,7 +13,7 @@
 #include "PakLoader.h"
 #include "DdsFormat.h"
 
-#include <SDL_image.h>
+#include <SDL3_image/SDL_image.h>
 #include <unordered_set>
 
 #include "../../GameEngine.h"
@@ -69,9 +69,9 @@ HdImageLoader::HdImageLoader()
 HdImageLoader::~HdImageLoader()
 {
 	if(flagImg[0])
-		SDL_FreeSurface(flagImg[0]);
+		SDL_DestroySurface(flagImg[0]);
 	if(flagImg[1])
-		SDL_FreeSurface(flagImg[1]);
+		SDL_DestroySurface(flagImg[1]);
 }
 
 void HdImageLoader::loadFlagData()
@@ -128,7 +128,7 @@ std::shared_ptr<SDLImageShared> HdImageLoader::getImage(const ImagePath & path, 
 
 		auto img = std::make_shared<SDLImageShared>(surf);
 
-		SDL_FreeSurface(surf);
+		SDL_DestroySurface(surf);
 
 		return img;
 	}
@@ -158,9 +158,9 @@ std::shared_ptr<SDLImageShared> HdImageLoader::getImage(const ImagePath & path, 
 		img->setFullSize(fullSize * scalingFactor);
 	img->setMargins((margins - Point(image.spriteOffsetX, image.spriteOffsetY)) * scalingFactor);
 
-	SDL_FreeSurface(surfCropped);
+	SDL_DestroySurface(surfCropped);
 	if(surfRotated)
-		SDL_FreeSurface(surfRotated);
+		SDL_DestroySurface(surfRotated);
 	
 	return img;
 }

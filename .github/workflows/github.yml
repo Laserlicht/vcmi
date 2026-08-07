@@ -614,6 +614,15 @@ jobs:
         restore-keys: |
           ${{ matrix.platform }}-apt-${{ matrix.os }}
 
+    # SDL3 is built from source since no distribution packages it yet.
+    # On a cache hit the install script finds it via pkg-config and skips rebuilding.
+    - name: SDL3 cache
+      if: contains(matrix.os, 'ubuntu')
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/sdl3
+        key: ${{ matrix.platform }}-sdl3-${{ matrix.os }}-${{ hashFiles('CI/before_install/linux_sdl3.sh') }}
+
     - name: Prepare CI
       run: source '${{ github.workspace }}/CI/before_install/${{ matrix.before_install }}'
 

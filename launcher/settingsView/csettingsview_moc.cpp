@@ -25,7 +25,7 @@
 #include "../../lib/CConfigHandler.h"
 
 #ifndef VCMI_MOBILE
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #endif
 
 static QString resolutionToString(const QSize & resolution)
@@ -386,9 +386,9 @@ static QStringList getAvailableRenderingDrivers()
 
 	for(int it = 0; it < driversCount; it++)
 	{
-		SDL_RendererInfo info;
-		if (SDL_GetRenderDriverInfo(it, &info) == 0)
-			result += QString::fromLatin1(info.name);
+		const char * driver = SDL_GetRenderDriver(it);
+		if (driver != nullptr)
+			result += QString::fromLatin1(driver);
 	}
 
 	SDL_Quit();
@@ -402,18 +402,19 @@ static QVector<QSize> findAvailableResolutions(int displayIndex)
 	QVector<QSize> result;
 	SDL_Init(SDL_INIT_VIDEO);
 
-	int modesCount = SDL_GetNumDisplayModes(displayIndex);
+	// SDL3 identifies displays by opaque ID's while our settings store a plain index
+	int displaysCount = 0;
+	SDL_DisplayID * displays = SDL_GetDisplays(&displaysCount);
+	SDL_DisplayID displayID = (displays && displayIndex >= 0 && displayIndex < displaysCount) ? displays[displayIndex] : SDL_GetPrimaryDisplay();
+	SDL_free(displays);
 
-	for (int i = 0; i < modesCount; ++i)
-	{
-		SDL_DisplayMode mode;
-		if (SDL_GetDisplayMode(displayIndex, i, &mode) != 0)
-			continue;
+	int modesCount = 0;
+	SDL_DisplayMode ** modes = SDL_GetFullscreenDisplayModes(displayID, &modesCount);
 
-		QSize resolution(mode.w, mode.h);
+	for (int i = 0; modes && i < modesCount; ++i)
+		result.push_back(QSize(modes[i]->w, modes[i]->h));
 
-		result.push_back(resolution);
-	}
+	SDL_free(modes);
 
 	std::ranges::sort(result, [](const auto & left, const auto & right)
 	{

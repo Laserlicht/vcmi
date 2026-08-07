@@ -11,7 +11,7 @@
 #include "StdInc.h"
 #include "DdsFormat.h"
 
-#include <SDL_surface.h>
+#include <SDL3/SDL_surface.h>
 #include <squish.h>
 
 #include "../../../lib/filesystem/CInputStream.h"
@@ -151,7 +151,7 @@ SDL_Surface * DdsFormat::load(CInputStream * stream, const std::string & cacheNa
 			return nullptr;
 	}
 
-	SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(0, rw, rh, 32, SDL_PIXELFORMAT_RGBA32);
+	SDL_Surface* surf = SDL_CreateSurface(rw, rh, SDL_PIXELFORMAT_RGBA32);
 
 	uint8_t* dst = static_cast<uint8_t*>(surf->pixels);
 

@@ -14,7 +14,7 @@
 
 #include "../../lib/CConfigHandler.h"
 
-#include <SDL_mixer.h>
+#include <SDL3_mixer/SDL_mixer.h>
 
 class CMusicHandler;
 
@@ -22,7 +22,7 @@ class CMusicHandler;
 class MusicEntry : boost::noncopyable
 {
 	CMusicHandler * owner;
-	Mix_Music * music;
+	MIX_Audio * music;
 
 	//if not null - set from which music will be randomly selected
 	std::string setName;
@@ -35,6 +35,7 @@ class MusicEntry : boost::noncopyable
 	bool playing;
 
 	void load(const AudioPath & musicURI);
+	bool playTrack(int fadeInMs, int startPositionMs);
 
 public:
 	MusicEntry(CMusicHandler * owner, std::string setName, const AudioPath & musicURI, bool looped, bool fromStart);
@@ -58,8 +59,15 @@ private:
 	std::unique_ptr<MusicEntry> current;
 	std::unique_ptr<MusicEntry> next;
 
+	/// SDL3_mixer has no dedicated music channel, so music plays on a track of its own
+	MIX_Track * musicTrack = nullptr;
+
 	std::mutex mutex;
 	int volume = 0; // from 0 (mute) to 100
+
+	MIX_Track * getMusicTrack() const;
+	/// converts a fade duration in milliseconds into the sample frame count SDL3_mixer expects
+	Sint64 fadeFrames(int fade_ms) const;
 
 	void queueNext(CMusicHandler * owner, const std::string & setName, const AudioPath & musicURI, bool looped, bool fromStart);
 	void queueNext(std::unique_ptr<MusicEntry> queued);

@@ -40,7 +40,7 @@
 #include "../lib/texts/TextOperations.h"
 #include "../lib/texts/CGeneralTextHandler.h"
 
-#include <SDL_render.h>
+#include <SDL3/SDL_render.h>
 
 std::unique_ptr<GameEngine> ENGINE;
 

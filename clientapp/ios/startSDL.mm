@@ -16,10 +16,10 @@
 #include "CServerHandler.h"
 #include "CFocusableHelper.h"
 
-#include <SDL_main.h>
-#include <SDL_events.h>
-#include <SDL_render.h>
-#include <SDL_system.h>
+#include <SDL3/SDL_main.h>
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_render.h>
+#include <SDL3/SDL_system.h>
 
 #import <UIKit/UIKit.h>
 
@@ -63,9 +63,9 @@ int startSDL(int argc, char * argv[], BOOL startManually)
 		{
 			// copied from -[SDLUIKitDelegate postFinishLaunch]
 			SDL_SetMainReady();
-			SDL_iOSSetEventPump(SDL_TRUE);
+			SDL_SetiOSEventPump(true);
 			result = SDL_main(argc, argv);
-			SDL_iOSSetEventPump(SDL_FALSE);
+			SDL_SetiOSEventPump(false);
 		}
 		else
 		{
@@ -75,7 +75,7 @@ int startSDL(int argc, char * argv[], BOOL startManually)
 				exit(0);
 			}];
 			// calls UIApplicationMain internally, never returns
-			result = SDL_UIKitRunApp(argc, argv, SDL_main);
+			result = SDL_RunApp(argc, argv, SDL_main, nullptr);
 		}
 
 		cleanup();

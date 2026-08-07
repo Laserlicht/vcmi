@@ -47,12 +47,18 @@
 #include <boost/program_options.hpp>
 #include <vstd/StringUtils.h>
 
-#include <SDL_main.h>
-#include <SDL.h>
+// SDL_main.h is header-only in SDL3 and emits the platform entry point here.
+// When VCMI supplies its own wmain() below, SDL must not generate one.
+#if defined(VCMI_WINDOWS) && !defined(__GNUC__) && defined(VCMI_WITH_DEBUG_CONSOLE)
+#define SDL_MAIN_HANDLED
+#endif
+
+#include <SDL3/SDL_main.h>
+#include <SDL3/SDL.h>
 
 #ifdef VCMI_ANDROID
 #include "../lib/CAndroidVMHelper.h"
-#include <SDL_system.h>
+#include <SDL3/SDL_system.h>
 #endif
 
 #if __MINGW32__
@@ -126,8 +132,13 @@ int SDL_main(int argc, char *argv[])
 int main(int argc, char * argv[])
 #endif
 {
+#ifdef SDL_MAIN_HANDLED
+	// entry point is provided by VCMI, so SDL has to be told that it already ran
+	SDL_SetMainReady();
+#endif
+
 #ifdef VCMI_ANDROID
-	CAndroidVMHelper::initClassloader(SDL_AndroidGetJNIEnv());
+	CAndroidVMHelper::initClassloader(SDL_GetAndroidJNIEnv());
 	// boost will crash without this
 	setenv("LANG", "C", 1);
 #endif

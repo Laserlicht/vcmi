@@ -31,7 +31,7 @@
 #include "../../lib/CConfigHandler.h"
 #include "../../lib/texts/CGeneralTextHandler.h" //for Unicode related stuff
 
-#include <SDL_surface.h>
+#include <SDL3/SDL_surface.h>
 
 CWindowObject::CWindowObject(int options_, const ImagePath & imageName, Point centerAt):
 	WindowBase(0, Point()),

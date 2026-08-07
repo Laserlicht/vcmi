@@ -66,9 +66,9 @@ if(WIN32)
 			PROJECT_LABEL "VCMI_client"
 	)
 	set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT vcmiclient)
+	# SDL3 provides the WinMain entry point from SDL_main.h, no library to link
 	if(NOT ENABLE_DEBUG_CONSOLE)
 		set_target_properties(vcmiclient PROPERTIES WIN32_EXECUTABLE)
-		target_link_libraries(vcmiclient SDL2::SDL2main)
 	endif()
 	target_compile_definitions(vcmiclient PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
 elseif(IOS)

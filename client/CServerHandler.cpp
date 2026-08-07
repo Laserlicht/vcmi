@@ -66,7 +66,7 @@
 #include <boost/uuid/uuid_generators.hpp>
 
 #include <vcmi/events/EventBus.h>
-#include <SDL_thread.h>
+#include <SDL3/SDL_thread.h>
 
 
 CServerHandler::~CServerHandler()
@@ -143,11 +143,11 @@ void CServerHandler::threadRunNetwork()
 	{
 		// VCMI can run SDL methods on network thread, leading to usage of thread-local storage by SDL
 		// Such storage needs to be cleaned up manually for threads that were not created by SDL
-		SDL_TLSCleanup();
+		SDL_CleanupTLS();
 		logGlobal->info("Terminating network thread");
 		return;
 	}
-	SDL_TLSCleanup();
+	SDL_CleanupTLS();
 	logGlobal->info("Ending network thread");
 }
 
