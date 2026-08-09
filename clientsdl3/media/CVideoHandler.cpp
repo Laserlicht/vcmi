@@ -8,6 +8,7 @@
  *
  */
 #include "StdInc.h"
+#include "Profiler.h"
 #include "CVideoHandler.h"
 #include "../render/GpuResources.h"
 
@@ -205,6 +206,7 @@ bool CVideoInstance::openVideo()
 
 void CVideoInstance::prepareOutput(float scaleFactor, bool useTextureOutput)
 {
+	VCMI_PROFILE_N("Video: prepare output");
 	//setup scaling
 	dimensions = Point(getCodecContext()->width * scaleFactor, getCodecContext()->height * scaleFactor) * ENGINE->screenHandler().getScalingFactor();
 
@@ -244,6 +246,7 @@ void CVideoInstance::prepareOutput(float scaleFactor, bool useTextureOutput)
 
 void FFMpegStream::decodeNextFrame()
 {
+	VCMI_PROFILE_N("Video: decode packet");
 	int rc = avcodec_receive_frame(codecContext, frame);
 
 	// frame extracted - data that was sent to codecContext before was sufficient
@@ -305,6 +308,7 @@ void FFMpegStream::decodeNextFrame()
 
 bool CVideoInstance::loadNextFrame()
 {
+	VCMI_PROFILE_N("Video: load frame");
 	decodeNextFrame();
 	const AVFrame * frame = getCurrentFrame();
 
@@ -389,6 +393,7 @@ Point CVideoInstance::size()
 
 bool CVideoInstance::renderFrame(const Point & position)
 {
+	VCMI_PROFILE_N("Video: render frame (texture)");
 	SDL_Texture * frame = textureRGB;
 
 	if(!frame)
@@ -402,6 +407,7 @@ bool CVideoInstance::renderFrame(const Point & position)
 
 void CVideoInstance::show(const Point & position, SDL_Surface * to)
 {
+	VCMI_PROFILE_N("Video: render frame (surface)");
 	if(sws == nullptr)
 		throw std::runtime_error("No video to show!");
 
@@ -430,6 +436,7 @@ double FFMpegStream::getCurrentFrameDuration() const
 
 void CVideoInstance::tick(uint32_t msPassed)
 {
+	VCMI_PROFILE_N("Video: tick");
 	if(sws == nullptr)
 		throw std::runtime_error("No video to show!");
 

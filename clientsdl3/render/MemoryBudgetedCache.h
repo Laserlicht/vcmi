@@ -135,4 +135,11 @@ public:
 		return result;
 	}
 
+	/// Bytes currently retained, for reporting
+	size_t bytesUsed()
+	{
+		std::lock_guard lock(mutex);
+		return usedBytes;
+	}
+
 };

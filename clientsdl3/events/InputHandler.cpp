@@ -9,6 +9,7 @@
 */
 
 #include "StdInc.h"
+#include "Profiler.h"
 #include "InputHandler.h"
 
 #include "NotificationHandler.h"
@@ -58,6 +59,7 @@ InputHandler::~InputHandler() = default;
 
 void InputHandler::handleCurrentEvent(const SDL_Event & current)
 {
+	VCMI_PROFILE_N("Input: handle event");
 	switch (current.type)
 	{
 		case SDL_EVENT_KEY_DOWN:
@@ -255,6 +257,7 @@ std::vector<SDL_Event> InputHandler::acquireEvents()
 
 void InputHandler::processEvents()
 {
+	VCMI_PROFILE_N("Input: process events");
 	
 	// Update power state every ~300 frames (approx 5 seconds at 60 FPS)
 	if (++powerStateFrameCounter >= 300)
@@ -299,6 +302,7 @@ bool InputHandler::ignoreEventsUntilInput()
 
 void InputHandler::preprocessEvent(const SDL_Event & ev)
 {
+	VCMI_PROFILE_N("Input: preprocess event");
 	if(ev.type == SDL_EVENT_QUIT)
 	{
 		std::scoped_lock interfaceLock(ENGINE->interfaceMutex);
@@ -438,6 +442,7 @@ void InputHandler::preprocessEvent(const SDL_Event & ev)
 
 void InputHandler::fetchEvents()
 {
+	VCMI_PROFILE_N("Input: fetch events");
 	SDL_Event ev;
 
 	while(SDL_PollEvent(&ev))

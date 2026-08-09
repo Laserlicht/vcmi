@@ -10,6 +10,7 @@
 #include "StdInc.h"
 #include "SDLImage.h"
 #include "GpuResources.h"
+#include "Profiler.h"
 #include "RenderHandler.h"
 
 #include "SDLImageLoader.h"
@@ -191,6 +192,9 @@ SDL_Texture * SDLImageShared::getTexture(SDL_Palette * palette) const
 		return texture;
 
 	dropTexture();
+
+	VCMI_PROFILE_N("DIAG: image texture (re)created");
+	VCMI_PROFILE_VALUE(static_cast<uint64_t>(surf->w) * surf->h);
 
 	if(effectivePalette)
 		SDL_SetSurfacePalette(surf, palette);
@@ -669,6 +673,7 @@ void SDLImageShared::savePalette()
 
 SDLImageShared::~SDLImageShared()
 {
+	VCMI_PROFILE_N("DIAG: image destroyed");
 	dropTexture();
 	SDL_DestroySurface(surf);
 	if (originalPalette)
