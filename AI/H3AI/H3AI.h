@@ -82,6 +82,7 @@ private:
 	std::unique_ptr<AsyncRunner> asyncTasks;
 
 	std::shared_ptr<CCallback> cb;
+	bool openMap = false;
 	H3Player player;
 	HeroStateMap heroStates;
 	ValueMap dangerMap;

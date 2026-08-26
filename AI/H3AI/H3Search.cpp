@@ -67,7 +67,7 @@ void H3Search::clear()
 	reached.clear();
 }
 
-void H3Search::compute(CCallback * cb, const CGHeroInstance * hero, const int3 & start, int movementLimit, int windowRadius)
+void H3Search::compute(CCallback * cb, const CGHeroInstance * hero, const int3 & start, int movementLimit, int windowRadius, bool openMap)
 {
 	const int3 size = cb->getMapSize();
 
@@ -120,7 +120,7 @@ void H3Search::compute(CCallback * cb, const CGHeroInstance * hero, const int3 &
 		if(!here.reachable)
 			continue;
 
-		const TerrainTile * sourceTile = cb->getTile(current, false);
+		const TerrainTile * sourceTile = openMap ? cb->getTileUnchecked(current) : cb->getTile(current, false);
 
 		if(sourceTile == nullptr)
 			continue;
@@ -147,7 +147,7 @@ void H3Search::compute(CCallback * cb, const CGHeroInstance * hero, const int3 &
 				continue;
 			}
 
-			const TerrainTile * destTile = cb->getTile(next, false);
+			const TerrainTile * destTile = openMap ? cb->getTileUnchecked(next) : cb->getTile(next, false);
 
 			if(destTile == nullptr)
 			{
@@ -260,12 +260,13 @@ void buildReachability(
 	const CGHeroInstance * hero,
 	int range,
 	const HeroStateMap & heroStates,
-	H3Search & out)
+	H3Search & out,
+	bool openMap)
 {
 	// SS 4B.7 - hero::AI_build_reachability @ 0x42F570
 	//
 	//   1. our own reachability, bounded by movement points
-	out.compute(cb, hero, hero->visitablePos(), std::min(range, hero->movementPointsRemaining()));
+	out.compute(cb, hero, hero->visitablePos(), std::min(range, hero->movementPointsRemaining()), -1, openMap);
 
 	//   2. for every OTHER hero we own, a SECOND flood with ITS movement allowance,
 	//      whose reachable cells are struck out of ours.
@@ -297,7 +298,7 @@ void buildReachability(
 		(void)goal;
 
 		H3Search otherSearch;
-		otherSearch.compute(cb, other, other->visitablePos(), other->movementPointsLimit());
+		otherSearch.compute(cb, other, other->visitablePos(), other->movementPointsLimit(), -1, openMap);
 
 		// SS 4B.7 - "walk tmp's reachable-cell list and suppress those cells in `visited`",
 		// handicapped by how far that hero still is from its own goal.

@@ -62,7 +62,7 @@ public:
 	///        (2*windowRadius+1) square around @p start.  SS 4.5 runs exactly such a
 	///        bounded search - an 11x11 window around the object - when it smears an
 	///        object's value across the influence map.
-	void compute(CCallback * cb, const CGHeroInstance * hero, const int3 & start, int movementLimit, int windowRadius = -1);
+	void compute(CCallback * cb, const CGHeroInstance * hero, const int3 & start, int movementLimit, int windowRadius = -1, bool openMap = false);
 
 	const SearchCell & at(const int3 & tile) const;
 	SearchCell & at(const int3 & tile);
@@ -99,6 +99,7 @@ void buildReachability(
 	const CGHeroInstance * hero,
 	int range,
 	const HeroStateMap & heroStates,
-	H3Search & out);
+	H3Search & out,
+	bool openMap = false);
 
 }

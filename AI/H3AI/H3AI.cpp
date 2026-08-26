@@ -16,6 +16,7 @@
 
 #include "../../lib/AsyncRunner.h"
 #include "../../lib/CPlayerState.h"
+#include "../../lib/StartInfo.h"
 #include "../../lib/CThreadHelper.h"
 #include "../../lib/UnlockGuard.h"
 #include "../../lib/gameState/CGameState.h"
@@ -61,6 +62,31 @@ void H3AdventureAI::initGameInterface(std::shared_ptr<Environment> ENV, std::sha
 	cb->waitTillRealize = true;
 
 	asyncTasks = std::make_unique<AsyncRunner>();
+
+	// Map-open cheat, on the same terms the other adventure AI uses it: only when the
+	// scenario allows cheats at all, and never when a human shares this AI's team.
+	openMap = false;
+
+	if(cb->getStartInfo()->extraOptionsInfo.cheatsAllowed)
+	{
+		const TeamState * team = cb->getPlayerTeam(playerID);
+		bool humanInTeam = false;
+
+		if(team != nullptr)
+		{
+			for(const PlayerColor & mate : team->players)
+			{
+				const PlayerState * mateState = cb->getPlayerState(mate, false);
+
+				if(mateState != nullptr && mateState->human)
+					humanInTeam = true;
+			}
+		}
+
+		openMap = !humanInTeam;
+	}
+
+	logAi->info("H3AI for player %s: open map is %s", playerID.toString(), openMap ? "on" : "off");
 
 	player.init(cb.get(), playerID);
 }
@@ -143,6 +169,7 @@ void H3AdventureAI::takeTurn()
 	ctx.player = &player;
 	ctx.heroStates = &heroStates;
 	ctx.victory = getVictoryConditionInfo(cb.get());
+	ctx.openMap = openMap;
 
 	// 2. value_map = calloc((levels) * MAP_W * MAP_H * sizeof(int32))
 	dangerMap.resize(cb->getMapSize());
@@ -295,6 +322,7 @@ void H3AdventureAI::heroGotLevel(const CGHeroInstance * hero, PrimarySkill pskil
 	ctx.player = &player;
 	ctx.heroStates = &heroStates;
 	ctx.victory = getVictoryConditionInfo(cb.get());
+	ctx.openMap = openMap;
 
 	// The original is offered exactly two skills; VCMI may offer one or two.
 	SecondarySkill chosen = skills.front();

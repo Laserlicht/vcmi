@@ -27,6 +27,13 @@ struct H3Context
 	HeroStateMap * heroStates = nullptr;
 	VictoryConditionInfo victory;
 
+	/// Whether this AI may read the map through the fog.  The original AI reads gpGame's
+	/// map memory directly and its searchArray floods the whole map regardless of what
+	/// the player has explored, so an open map is the faithful configuration - but it is
+	/// a cheat against a human, and is gated accordingly (see H3AdventureAI::initGameInterface).
+	/// SS 4.4's exploration reward still keys on what the *player* has explored.
+	bool openMap = false;
+
 	/// SS 4B.1 / SS 4B.2 - the number of town records on the map.  The original reads it
 	/// as a pointer difference; here it is counted once and cached for the turn.
 	mutable int cachedTownsOnMap = -1;

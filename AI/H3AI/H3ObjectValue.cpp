@@ -27,6 +27,7 @@
 #include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/mapObjects/CGResource.h"
 #include "../../lib/mapObjects/army/CArmedInstance.h"
+#include "../../lib/mapping/TerrainTile.h"
 #include "../../lib/callback/Calendar.h"
 #include "../../lib/mapObjects/CGTownInstance.h"
 #include "../../lib/mapObjects/MiscObjects.h"
@@ -175,12 +176,22 @@ int spellValue(H3Context & ctx, const CGHeroInstance * hero, const SpellID & spe
 int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile, int & moveLimit)
 {
 	// SS 4.8 - hero::AI_object_value @ 0x528040, dispatched on MapObjectType.
-	// getTopObj logs verbosely for tiles under fog (see topObjectIfVisible in H3Movement),
-	// and a fogged tile holds nothing the player is allowed to value anyway.
-	if(!ctx.cb->isVisible(tile))
-		return 0;
+	// getTopObj logs verbosely for tiles under fog and returns nothing there; with the
+	// map-open cheat the tile is read straight out of the map instead (see topObjectAt
+	// in H3Movement.cpp, which this mirrors).
+	const CGObjectInstance * object = nullptr;
 
-	const CGObjectInstance * object = ctx.cb->getTopObj(tile);
+	if(ctx.cb->isVisible(tile))
+	{
+		object = ctx.cb->getTopObj(tile);
+	}
+	else if(ctx.openMap)
+	{
+		const TerrainTile * terrain = ctx.cb->getTileUnchecked(tile);
+
+		if(terrain != nullptr && !terrain->visitableObjects.empty())
+			object = ctx.cb->getObjInstance(terrain->visitableObjects.back());
+	}
 
 	if(object == nullptr || hero == nullptr)
 		return 0;

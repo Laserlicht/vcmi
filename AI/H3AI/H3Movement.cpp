@@ -29,14 +29,25 @@ namespace H3AI
 namespace
 {
 /// CGameInfoCallback::getTopObj resolves through getVisitableObjs(pos) with verbose
-/// logging on, which reports "is not visible!" twice for every fogged tile.  A fogged
-/// tile has no object the player may know about anyway, so it is never queried.
-const CGObjectInstance * topObjectIfVisible(H3Context & ctx, const int3 & tile)
+/// logging on, which reports "is not visible!" twice for every fogged tile - and returns
+/// nothing there regardless of the verbose flag.  With the map-open cheat the tile is
+/// read straight out of the map instead, which is what the original AI does for every
+/// tile; without it, a fogged tile simply holds nothing the player may know about.
+const CGObjectInstance * topObjectAt(H3Context & ctx, const int3 & tile)
 {
-	if(!ctx.cb->isVisible(tile))
+	if(ctx.cb->isVisible(tile))
+		return ctx.cb->getTopObj(tile);
+
+	if(!ctx.openMap)
 		return nullptr;
 
-	return ctx.cb->getTopObj(tile);
+	const TerrainTile * terrain = ctx.cb->getTileUnchecked(tile);
+
+	if(terrain == nullptr || terrain->visitableObjects.empty())
+		return nullptr;
+
+	// getTopObj takes the last visitable object; mirrored here.
+	return ctx.cb->getObjInstance(terrain->visitableObjects.back());
 }
 }
 
@@ -101,7 +112,7 @@ std::vector<HeroDestination> scanObjects(
 	// 1 / 2 - searchArray::compute_paths(hero, visited, range, 4|5), i.e. a movement
 	// flood over the whole map bounded by `range` movement points, with the cells other
 	// friendly heroes already cover struck out (SS 4B.7).
-	buildReachability(ctx.cb, hero, range, *ctx.heroStates, search);
+	buildReachability(ctx.cb, hero, range, *ctx.heroStates, search, ctx.openMap);
 
 	// 3 - if the hero stands on a tile with an object of ownership > 1, early out.
 	{
@@ -125,7 +136,7 @@ std::vector<HeroDestination> scanObjects(
 		if(!ignoreCost && cell.cost >= limit)
 			continue;
 
-		const CGObjectInstance * object = topObjectIfVisible(ctx, tile);
+		const CGObjectInstance * object = topObjectAt(ctx, tile);
 		int value;
 		int moveLimit = limit;
 
@@ -213,7 +224,7 @@ void addEnemyThreats(H3Context & ctx, const CGHeroInstance * hero, ValueMap & da
 			const int reach = enemy->movementPointsRemaining() + THREAT_RANGE_SLACK;
 
 			H3Search threatSearch;
-			threatSearch.compute(ctx.cb, enemy, enemy->visitablePos(), reach);
+			threatSearch.compute(ctx.cb, enemy, enemy->visitablePos(), reach, -1, ctx.openMap);
 
 			for(const int3 & tile : threatSearch.reachedCells())
 			{
@@ -240,7 +251,7 @@ void spreadObjectValue(
 	ValueMap & grid,
 	H3Search & local)
 {
-	local.compute(ctx.cb, hero, entry.coord, INFLUENCE_LOCAL_RANGE, INFLUENCE_WINDOW / 2);
+	local.compute(ctx.cb, hero, entry.coord, INFLUENCE_LOCAL_RANGE, INFLUENCE_WINDOW / 2, ctx.openMap);
 
 	// approach cost = max path cost over the 3x3 ring around the object
 	int base = 0;
@@ -404,7 +415,7 @@ int chooseDestination(
 	// garrison (0x50), or an already-owned object, send the hero straight there.
 	for(const HeroDestination & entry : list)
 	{
-		const CGObjectInstance * object = topObjectIfVisible(ctx, entry.coord);
+		const CGObjectInstance * object = topObjectAt(ctx, entry.coord);
 
 		if(object == nullptr)
 			continue;
@@ -452,7 +463,7 @@ void moveToDestination(H3Context & ctx, const CGHeroInstance * hero, HeroDestina
 	// walks it.  The list is built from a search whose limit (99999) is deliberately
 	// larger than any real movement allowance, so it spans the whole route.
 	H3Search search;
-	search.compute(ctx.cb, hero, hero->visitablePos(), PATH_BUILD_LIMIT);
+	search.compute(ctx.cb, hero, hero->visitablePos(), PATH_BUILD_LIMIT, -1, ctx.openMap);
 
 	std::vector<int3> path = search.buildPath(destination.coord);
 
@@ -471,13 +482,14 @@ void moveToDestination(H3Context & ctx, const CGHeroInstance * hero, HeroDestina
 
 	for(const int3 & step : path)
 	{
-		// The route may only run over ground the player has actually seen: a move onto a
-		// fogged tile is rejected outright by the server when that tile turns out to be
-		// blocked.  Walking up to the edge of the fog reveals what lies beyond it anyway.
-		if(!ctx.cb->isVisible(step))
+		// Without the map-open cheat the route may only run over ground the player has
+		// actually seen: a move onto a fogged tile is rejected outright by the server
+		// when that tile turns out to be blocked.  Walking up to the edge of the fog
+		// reveals what lies beyond it anyway.
+		if(!ctx.openMap && !ctx.cb->isVisible(step))
 			break;
 
-		const CGObjectInstance * object = topObjectIfVisible(ctx, step);
+		const CGObjectInstance * object = topObjectAt(ctx, step);
 
 		if(object != nullptr)
 		{
@@ -674,7 +686,7 @@ void heroTakeTurn(H3Context & ctx, const CGHeroInstance * hero, bool unlimitedRa
 
 	// SS 4.3 - landing on an explored magus hut resets the magus-hut value and wakes
 	// every hero of this player up again.
-	const CGObjectInstance * arrived = topObjectIfVisible(ctx, hero->visitablePos());
+	const CGObjectInstance * arrived = topObjectAt(ctx, hero->visitablePos());
 
 	if(arrived != nullptr && arrived->ID == Obj::HUT_OF_MAGI)
 	{

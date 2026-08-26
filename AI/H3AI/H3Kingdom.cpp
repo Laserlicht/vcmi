@@ -27,6 +27,7 @@
 #include "../../lib/entities/faction/CTown.h"
 #include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/mapObjects/CGTownInstance.h"
+#include "../../lib/mapping/TerrainTile.h"
 #include "../../lib/logging/CLogger.h"
 
 #include <algorithm>
@@ -441,6 +442,14 @@ int heroArrivalValue(H3Context & ctx, const CGTownInstance * town, const CGHeroI
 		const CGObjectInstance * object = ctx.cb->isVisible(entry.coord)
 			? ctx.cb->getTopObj(entry.coord)
 			: nullptr;
+
+		if(object == nullptr && ctx.openMap)
+		{
+			const TerrainTile * terrain = ctx.cb->getTileUnchecked(entry.coord);
+
+			if(terrain != nullptr && !terrain->visitableObjects.empty())
+				object = ctx.cb->getObjInstance(terrain->visitableObjects.back());
+		}
 
 		// (a) one of our own heroes stands here -> record, don't count
 		if(object != nullptr && object->ID == Obj::HERO && object->getOwner() == town->getOwner())
