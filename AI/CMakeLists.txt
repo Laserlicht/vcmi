@@ -21,3 +21,7 @@ add_subdirectory(EmptyAI)
 if(ENABLE_NULLKILLER2_AI)
 	add_subdirectory(Nullkiller2)
 endif()
+
+if(ENABLE_H3AI)
+	add_subdirectory(H3AI)
+endif()

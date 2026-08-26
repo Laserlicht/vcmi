@@ -15,6 +15,9 @@
 #ifdef ENABLE_NULLKILLER2_AI
 #  include "../../AI/Nullkiller2/AIGateway.h"
 #endif
+#ifdef ENABLE_H3AI
+#  include "../../AI/H3AI/H3AI.h"
+#endif
 #ifdef ENABLE_BATTLE_AI
 #  include "../../AI/BattleAI/BattleAI.h"
 #endif
@@ -38,6 +41,17 @@ std::shared_ptr<CGlobalAI> AIFactory::createAdventureAI(const std::string & name
 		return ret;
 #else
 		throw std::runtime_error("Nullkiller2 is not available in this build!");
+#endif
+	}
+
+	if(name == "H3AI")
+	{
+#ifdef ENABLE_H3AI
+		auto ret = std::make_shared<H3AI::H3AdventureAI>();
+		ret->dllName = name;
+		return ret;
+#else
+		throw std::runtime_error("H3AI is not available in this build!");
 #endif
 	}
 
@@ -80,6 +94,10 @@ bool AIFactory::isAvailableAdventureAI(const std::string & name)
 		return true;
 #ifdef ENABLE_NULLKILLER2_AI
 	if(name == "Nullkiller2")
+		return true;
+#endif
+#ifdef ENABLE_H3AI
+	if(name == "H3AI")
 		return true;
 #endif
 	return false;

@@ -150,6 +150,9 @@ void CSettingsView::fillValidAdventureAILibraries(QComboBox * comboBox, QString 
 #ifdef ENABLE_NULLKILLER2_AI
 	comboBox->addItem(tr("Nullkiller2 (default, recommended)"), "Nullkiller2");
 #endif
+#ifdef ENABLE_H3AI
+	comboBox->addItem(tr("H3AI (reimplementation of the original H3 adventure AI)"), "H3AI");
+#endif
 
 	fillValidAnyAILibraries(comboBox, activeAI);
 	comboBox->blockSignals(false);
