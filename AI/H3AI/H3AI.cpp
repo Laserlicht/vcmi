@@ -25,6 +25,8 @@
 #include "../../lib/callback/CCallback.h"
 #include "../../lib/logging/CLogger.h"
 #include "../../lib/entities/artifact/CArtifact.h"
+#include "../../lib/CCreatureHandler.h"
+#include "../../lib/mapObjects/CGDwelling.h"
 #include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/mapObjects/CGTownInstance.h"
 
@@ -33,6 +35,52 @@
 
 namespace H3AI
 {
+
+namespace
+{
+/// Spend the purse on a dwelling the hero is standing in.
+///
+/// TODO: not covered by the report - SS 4.8 only prices a dwelling, by "the value of the
+/// creatures buyable now" (H3ObjectValue.cpp), and says nothing about the purchase that
+/// follows.  Pricing a destination by what can be bought there and then walking away
+/// without buying would make every dwelling visit a no-op, so the obvious reading is
+/// used: strongest tier first, as many as the purse and the free slots allow.
+void recruitFromDwelling(CCallback * cb, const CGDwelling * dwelling, const CArmedInstance * dst, int level)
+{
+	if(dwelling == nullptr || dst == nullptr)
+		return;
+
+	// The window is opened either for one tier (EOpenWindowMode::RECRUITMENT_FIRST, which
+	// the client is handed as level 0) or for all of them (RECRUITMENT_ALL, level -1).
+	for(int tier = static_cast<int>(dwelling->creatures.size()) - 1; tier >= 0; --tier)
+	{
+		if(level >= 0 && tier != level)
+			continue;
+
+		const auto & offer = dwelling->creatures[tier];
+
+		if(offer.second.empty() || offer.first == 0)
+			continue;
+
+		// getTopObj's convention: the last entry is the upgraded creature, if any.
+		const CreatureID creature = offer.second.back();
+		const CCreature * type = creature.toCreature();
+
+		if(type == nullptr)
+			continue;
+
+		// A stack that has nowhere to go would be rejected by the server anyway.
+		if(!dst->getSlotFor(creature).validSlot())
+			continue;
+
+		const int affordable = cb->getResourceAmount() / type->getFullRecruitCost();
+		const int toBuy = std::min<int>(offer.first, affordable);
+
+		if(toBuy > 0)
+			cb->recruitCreatures(dwelling, dst, creature, toBuy, static_cast<si32>(tier));
+	}
+}
+}
 
 H3AdventureAI::H3AdventureAI() = default;
 
@@ -102,16 +150,21 @@ void H3AdventureAI::finish()
 	}
 }
 
-void H3AdventureAI::answerQueryAsync(QueryID queryID, int selection)
+void H3AdventureAI::answerQueryAsync(QueryID queryID, int selection, std::function<void()> beforeReply)
 {
 	// A query the server does not expect an answer to arrives as QueryID::NONE; replying
 	// to it is the "Cannot answer the query -1!" error in CCallback::sendQueryReply.
-	if(queryID == QueryID::NONE)
+	if(queryID == QueryID::NONE && !beforeReply)
 		return;
 
 	if(!asyncTasks)
 	{
-		cb->selectionMade(selection, queryID);
+		if(beforeReply)
+			beforeReply();
+
+		if(queryID != QueryID::NONE)
+			cb->selectionMade(selection, queryID);
+
 		return;
 	}
 
@@ -122,7 +175,7 @@ void H3AdventureAI::answerQueryAsync(QueryID queryID, int selection)
 		++pendingQueries;
 	}
 
-	asyncTasks->run([this, queryID, selection]()
+	asyncTasks->run([this, queryID, selection, beforeReply = std::move(beforeReply)]()
 	{
 		ScopedThreadName guard("H3AI::answerQuery");
 
@@ -134,7 +187,11 @@ void H3AdventureAI::answerQueryAsync(QueryID queryID, int selection)
 			// owned and wedge every other thread.
 			std::shared_lock gsLock(CGameState::mutex);
 
-			cb->selectionMade(selection, queryID);
+			if(beforeReply)
+				beforeReply();
+
+			if(queryID != QueryID::NONE)
+				cb->selectionMade(selection, queryID);
 		}
 
 		{
@@ -290,6 +347,16 @@ void H3AdventureAI::takeTurn()
 		if(chosen == nullptr)
 			break;
 
+		if(chosen->isGarrisoned())
+		{
+			// swapGarrisonHero can be refused - the town may hold a visiting hero, or a
+			// query may still sit on the player's stack - and a garrisoned hero has no
+			// map position, so every tile lookup below would run on (-1,-1,-1).  Mark it
+			// done so the pick cannot come back to it and spin.
+			heroStates[chosen->id].done = true;
+			continue;
+		}
+
 		// Anything below may block and let the server run a battle in which this hero
 		// dies, so the pointer is not held across those calls - only its id is.
 		const ObjectInstanceID heroId = chosen->id;
@@ -406,6 +473,49 @@ void H3AdventureAI::showMapObjectSelectDialog(QueryID askID, const Component & i
 {
 	// TODO: not covered by the report.
 	answerQueryAsync(askID, 0);
+}
+
+// The dialogs below are opened with a query on the player's query stack.  Until it is
+// answered the server rejects every further pack from this player - including endTurn,
+// which is what wedges the whole game on the AI's turn - so each one must be closed even
+// when the AI has nothing to do in it.
+
+void H3AdventureAI::showRecruitmentDialog(const CGDwelling * dwelling, const CArmedInstance * dst, int level, QueryID queryID)
+{
+	// The purchase has to happen before the reply: closing the window pops the query, and
+	// OpenWindowQuery::blocksPack only lets RecruitCreatures through while it is open.
+	answerQueryAsync(queryID, 0, [this, dwelling, dst, level]()
+	{
+		recruitFromDwelling(cb.get(), dwelling, dst, level);
+	});
+}
+
+void H3AdventureAI::showTavernWindow(const CGObjectInstance * object, const CGHeroInstance * visitor, QueryID queryID)
+{
+	// SS 4B.9 / SS 4B.10 - hiring is a kingdom-phase decision made at a town (hireHero),
+	// not a reaction to walking into a tavern, so the window is only closed.
+	answerQueryAsync(queryID, 0);
+}
+
+void H3AdventureAI::showMarketWindow(const IMarket * market, const CGHeroInstance * visitor, QueryID queryID)
+{
+	// TODO: SS 4B.13's AI_plan_trades / AI_do_trades commit a trade, but the report gives
+	// neither the market nor the rate selection (TODO.md item 373), so nothing is traded.
+	answerQueryAsync(queryID, 0);
+}
+
+void H3AdventureAI::showUniversityWindow(const IMarket * market, const CGHeroInstance * visitor, QueryID queryID)
+{
+	// TODO: the report does not cover skill buying at a University.
+	answerQueryAsync(queryID, 0);
+}
+
+void H3AdventureAI::heroExchangeStarted(ObjectInstanceID hero1, ObjectInstanceID hero2, QueryID queryID)
+{
+	// Two of our own heroes met.  SS 4B.4's planner only ever runs between a hero and a
+	// town garrison (SS 4.13), so there is no documented hero-to-hero exchange; as with
+	// showGarrisonDialog, the dialog is just closed.
+	answerQueryAsync(queryID, 0);
 }
 
 void H3AdventureAI::battleStart(const BattleID & battleID, const CCreatureSet * army1, const CCreatureSet * army2, int3 tile, const CGHeroInstance * hero1, const CGHeroInstance * hero2, BattleSide side, bool replayAllowed)

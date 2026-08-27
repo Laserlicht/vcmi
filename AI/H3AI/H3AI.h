@@ -15,6 +15,7 @@
 #include "../../lib/callback/CAdventureAI.h"
 
 #include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
 
@@ -50,6 +51,11 @@ public:
 	void showGarrisonDialog(const CArmedInstance * up, const CGHeroInstance * down, bool removableUnits, QueryID queryID, const MetaString & customTitle) override;
 	void showTeleportDialog(const CGHeroInstance * hero, TeleportChannelID channel, TTeleportExitsList exits, bool impassable, QueryID askID) override;
 	void showMapObjectSelectDialog(QueryID askID, const Component & icon, const MetaString & title, const MetaString & description, const std::vector<ObjectInstanceID> & objects) override;
+	void showRecruitmentDialog(const CGDwelling * dwelling, const CArmedInstance * dst, int level, QueryID queryID) override;
+	void showTavernWindow(const CGObjectInstance * object, const CGHeroInstance * visitor, QueryID queryID) override;
+	void showMarketWindow(const IMarket * market, const CGHeroInstance * visitor, QueryID queryID) override;
+	void showUniversityWindow(const IMarket * market, const CGHeroInstance * visitor, QueryID queryID) override;
+	void heroExchangeStarted(ObjectInstanceID hero1, ObjectInstanceID hero2, QueryID queryID) override;
 	std::optional<BattleAction> makeSurrenderRetreatDecision(const BattleID & battleID, const BattleStateInfoForRetreat & battleState) override;
 
 	void battleStart(const BattleID & battleID, const CCreatureSet * army1, const CCreatureSet * army2, int3 tile, const CGHeroInstance * hero1, const CGHeroInstance * hero2, BattleSide side, bool replayAllowed) override;
@@ -64,7 +70,11 @@ private:
 	/// blocks the calling thread until the server confirms.  That must never happen on
 	/// the network dispatch thread the interface callbacks arrive on, so both the turn
 	/// itself and every query reply are handed to a worker.
-	void answerQueryAsync(QueryID queryID, int selection);
+	///
+	/// @param beforeReply  optional work to run on that worker, with the game-state lock
+	///        held, before the reply is sent - a window query that the AI wants to act on
+	///        (recruitment) must issue its requests while the window is still open.
+	void answerQueryAsync(QueryID queryID, int selection, std::function<void()> beforeReply = {});
 
 	/// The server refuses every adventure-map action while any query sits on the player's
 	/// query stack - a CBattleQuery for the battle itself, then a CHeroLevelUpDialogQuery

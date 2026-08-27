@@ -117,7 +117,10 @@ std::vector<HeroDestination> scanObjects(
 
 	// 3 - if the hero stands on a tile with an object of ownership > 1, early out.
 	{
-		const CGObjectInstance * here = ctx.cb->getTopObj(hero->visitablePos());
+		// Not getTopObj directly: it resolves through getVisitableObjs(pos) with verbose
+		// logging, so a hero whose position is not visible (or not on the map at all)
+		// would spam the log instead of just answering "nothing here".
+		const CGObjectInstance * here = topObjectAt(ctx, hero->visitablePos());
 
 		if(here != nullptr && here->getOwner().isValidPlayer() && here->getOwner() != hero->getOwner())
 			return result;
