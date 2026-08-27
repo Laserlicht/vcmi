@@ -10,12 +10,17 @@
 #include "StdInc.h"
 #include "H3ObjectValue.h"
 
+#include "H3ArtifactValue.h"
+#include "H3SpellValue.h"
+
 #include "H3ArmyPlanner.h"
 #include "H3CombatEstimate.h"
 #include "H3TownValue.h"
 #include "H3Valuations.h"
 
 #include "../../lib/CCreatureHandler.h"
+#include "../../lib/gameState/UpgradeInfo.h"
+#include "../../lib/entities/artifact/CArtifactInstance.h"
 #include "../../lib/CPlayerState.h"
 #include "../../lib/CSkillHandler.h"
 #include "../../lib/GameLibrary.h"
@@ -34,6 +39,7 @@
 #include "../../lib/spells/CSpellHandler.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace H3AI
 {
@@ -73,21 +79,6 @@ bool backpackFull(const CGHeroInstance * hero)
 {
 	// SS 4.8 - AI_artifact_count(hero, true) >= 64
 	return hero->artifactsInBackpack.size() >= BACKPACK_FULL;
-}
-
-int currentMorale(const CGHeroInstance * hero)
-{
-	// TODO: SS 4.8 handlers call hero::get_morale (0x4E39B0), which the report never
-	// expands.  VCMI's own morale total is used.
-	return hero->valOfBonuses(BonusType::MORALE);
-}
-
-int currentLuck(const CGHeroInstance * hero)
-{
-	// TODO: as with get_morale, the report never expands the original's luck accessor.
-	// CGHeroInstance::getCurrentLuck is declared in VCMI but has no definition, so the
-	// bonus total is queried directly.
-	return hero->valOfBonuses(BonusType::LUCK);
 }
 
 /// The guarding army of a map object, or nullptr when it has none.
@@ -139,13 +130,10 @@ int artifactValue(H3Context & ctx, const ArtifactID & artifact)
 		return VICTORY_CONDITION_OVERRIDE;
 	}
 
-	// SS 4.9 - the ordinary value is produced by AI_get_value_of_artifact, "evaluated
-	// through the type_artifact_effect class hierarchy whose vftables sit at
-	// 0x63B6B0...0x63B778".
-	// TODO: the report identifies the class hierarchy but gives none of its arithmetic,
-	// so no per-artifact valuation can be reproduced.  Callers that need a floor apply
-	// SS 4.8's max(value, 10) themselves.
-	return 0;
+	// SS 4.9a - AI_get_value_of_artifact @ 0x433AA0: the most any of our heroes would
+	// gain by taking it, floored at 10.  The 24 type_artifact_effect classes and the
+	// artifact -> effect binding table live in H3ArtifactValue / H3ArtifactData.
+	return artifactValueForPlayer(ctx, artifact);
 }
 
 int spellValue(H3Context & ctx, const CGHeroInstance * hero, const SpellID & spell)
@@ -167,10 +155,10 @@ int spellValue(H3Context & ctx, const CGHeroInstance * hero, const SpellID & spe
 	if(!hero->hasSpellbook())
 		return 0;
 
-	// TODO: the real valuer is 0x527640, a counterfactual over the whole spellbook using
-	// the shared trio 0x526D40 / 0x5273D0 / 0x5275B0.  SS 4.17 gives its skeleton but
-	// none of the three helper bodies, so the number it produces cannot be reproduced.
-	return 0;
+	// SS 4.9b - AI_get_spell_value @ 0x527640: the spell's own value, less the best the
+	// hero already has in the same competing group, or the token 1 when it is no
+	// improvement.  See H3SpellValue.
+	return aiGetSpellValue(hero, spell);
 }
 
 int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile, int & moveLimit)
@@ -284,7 +272,11 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 		// SS 4.8 - sum over the 7 offered artifacts of
 		//   max(0, AI_get_value_of_artifact(art) - price * resource_value[priceResource])
 		// and 0 for any artifact the player cannot afford.
-		// TODO: needs AI_get_value_of_artifact, which the report does not specify.
+		// SS 4.9a now supplies AI_get_value_of_artifact.
+		// TODO(VCMI): the seven artifacts a Black Market currently offers and their
+		// prices are server-side state; where a caller can reach them the remaining
+		// term is exactly
+		//   sum over offers of max(0, artifactValueForPlayer(art) - price * resourceValue)
 		return 0;
 	}
 
@@ -441,7 +433,7 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 
 	// ---- Garden of Revelation (32) -----------------------------------------------
 	case Obj::GARDEN_OF_REVELATION:
-		return val.valueOfOther;
+		return val.valueOfKnowledge;
 
 	// ---- Garrison (33) -----------------------------------------------------------
 	case Obj::GARRISON:
@@ -478,9 +470,52 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 
 	// ---- Hill Fort (35) ----------------------------------------------------------
 	case Obj::HILL_FORT:
-		// SS 4.8 - "value of upgrading the army minus the cost".
-		// TODO: the report gives no formula beyond that sentence.
-		return 0;
+	{
+		// SS 4.8a - 0x528DF0.  The sum over upgradable stacks of the AI-value gained,
+		// restricted to what the player can actually afford, with the gold half of each
+		// cost discounted by creature level.  Resources are spent greedily in slot
+		// order, so the FIRST upgradable stack gets first claim on the treasury - that
+		// ordering is part of the specification, not an artefact.
+		ResourceSet purse = ctx.cb->getResourceAmount();
+		int64_t total = 0;
+
+		for(const auto & slot : hero->Slots())
+		{
+			const CCreature * current = hero->getCreature(slot.first);
+
+			if(current == nullptr)
+				continue;
+
+			UpgradeInfo info(current->getId());
+			ctx.cb->fillUpgradeInfo(hero, slot.first, info);
+
+			if(!info.hasUpgrades())
+				continue;
+
+			const CreatureID upgradeId = info.getUpgrade();
+			const CCreature * upgraded = upgradeId.toCreature();
+
+			if(upgraded == nullptr)
+				continue;
+
+			const int count = hero->getStackCount(slot.first);
+			ResourceSet cost = info.getUpgradeCostsFor(upgradeId) * count;
+
+			// SS 4.8a - g_hillFortDiscount, floats at 0x63EB4C, indexed by creature
+			// level: level 1 upgrades are free, level 5 and up pay in full.
+			const int level = std::clamp(current->getLevel(), 1, 7);
+			cost[GameResID::GOLD] = static_cast<int>(
+				cost[GameResID::GOLD] * HILL_FORT_GOLD_DISCOUNT[level - 1]);
+
+			if(!purse.canAfford(cost))
+				continue;
+
+			total += static_cast<int64_t>(upgraded->getAIValue() - current->getAIValue()) * count;
+			purse -= cost;
+		}
+
+		return static_cast<int>(total);
+	}
 
 	// ---- Hut of Magi (37) --------------------------------------------------------
 	case Obj::HUT_OF_MAGI:
@@ -490,15 +525,13 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 	// ---- Idol of Fortune (38) ----------------------------------------------------
 	case Obj::IDOL_OF_FORTUNE:
 	{
-		// SS 4.8 - "luck or morale depending on the week".
-		// In H3 the Idol grants luck on days 1-6 and both on day 7.
-		// TODO: the report does not state which way round the week test goes, only that
-		// there is one.  The luck arm is used for days 1-6 and morale added on day 7.
-		const int day = dayOfWeek(ctx);
-		int64_t value = luckMoraleToAbsolute(hero, valueOfLuck(currentLuck(hero), 1));
-
-		if(day == 7)
-			value += luckMoraleToAbsolute(hero, valueOfMorale(currentMorale(hero), 1));
+		// SS 4.8a - 0x528B13.  On the last day of the week the Idol is worth BOTH terms;
+		// otherwise one bit of the hero's already-got-this word picks which single term
+		// applies.  Note the same unscaled-fraction quirk as the Rally Flag: the
+		// original passes the bare fractions to ftol, so all three arms truncate to 0.
+		const double value = dayOfWeek(ctx) == 7
+			? valueOfMorale(currentMorale(hero), 1) + valueOfLuck(currentLuck(hero), 1)
+			: valueOfLuck(currentLuck(hero), 1);
 
 		return static_cast<int>(value);
 	}
@@ -521,7 +554,7 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 			return 0;
 
 		return static_cast<int>(armyValue / LIBRARY_ARMY_DIVISOR)
-			+ 2 * (val.valueOfSpellPower + val.valueOfOther);
+			+ 2 * (val.valueOfSpellPower + val.valueOfKnowledge);
 	}
 
 	// ---- Lighthouse (42) ---------------------------------------------------------
@@ -533,15 +566,20 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 		if(visitedByHero(hero, object))
 			return 0;
 
-		return static_cast<int>(std::max(val.valueOfSpellPower, val.valueOfOther)
+		return static_cast<int>(std::max(val.valueOfSpellPower, val.valueOfKnowledge)
 			- SCHOOL_OF_MAGIC_COST * goldValue);
 
 	// ---- Magic Spring (48) / Magic Well (49) -------------------------------------
 	case Obj::MAGIC_SPRING:
 	case Obj::MAGIC_WELL:
-		// SS 4.8 - 0x52B810 / 0x52A510, "mana refill value".
-		// TODO: neither routine is expanded in the report.
-		return 0;
+		// SS 4.8a - 0x52B810 / 0x52A510.  Both handlers are trivial: the number was
+		// precomputed once this turn by AI_update_valuations as hero + 0x48A (mana to
+		// twice the maximum, the Spring) and hero + 0x48E (mana to the maximum, the
+		// Well).  See SS 4.9b for the probes that produce them.
+		if(visitedByHero(hero, object))
+			return 0;
+
+		return object->ID == Obj::MAGIC_SPRING ? val.valueOfDoubleMana : val.valueOfFullMana;
 
 	// ---- Mercenary Camp (51) -----------------------------------------------------
 	case Obj::MERCENARY_CAMP:
@@ -635,27 +673,65 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 		if(visitedByHero(hero, object))
 			return 0;
 
-		int64_t value = luckMoraleToAbsolute(hero, valueOfMorale(currentMorale(hero), 1));
+		// SS 4.8a - the movement grant IS the pricing: moveLimit is the movement cost of
+		// reaching the object, and a grant that covers the whole approach makes the
+		// object free to visit, which the original scores with a flat sentinel.
+		if(moveLimit < OASIS_MOVEMENT)
+		{
+			moveLimit = 0;
+			return MOVEMENT_GRANT_SENTINEL;
+		}
 
-		// TODO: the report does not say how the +400 movement points are priced.
-		(void)OASIS_MOVEMENT;
+		moveLimit -= OASIS_MOVEMENT;
 
-		return static_cast<int>(value);
+		return static_cast<int>(luckMoraleToAbsolute(hero, valueOfMorale(currentMorale(hero), 1)));
 	}
 
 	// ---- Obelisk (57) ------------------------------------------------------------
 	case Obj::OBELISK:
-		// SS 4.8 -> 0x52A2B0, "puzzle-map progress".
-		// TODO: SS 4.14 explicitly leaves the Grail-area reduction unexpanded, so the
-		// reward for narrowing the dig target cannot be reproduced.
+		// SS 4.8a / SS 4.14 - 0x52A2B0.  An obelisk is worth the Grail divided by the
+		// number of obelisks on the map:
+		//   if (this player already visited it)          return 0;
+		//   if (no Grail on this map)                    return 0;
+		//   if (the dig site is already pinned)          return 0;
+		//   return artifactValueForPlayer(GRAIL) / obeliskCount;
+		// The Grail's own value comes from SS 4.9a - income(5000 gold) plus creature
+		// growth on all seven dwelling levels - which is why an AI with a strong Grail
+		// town chases obelisks and one without ignores them.
+		//
+		// TODO(VCMI): the per-player obelisk-visited mask and the map's obelisk count
+		// are not exposed to an AI callback.  Everything else is in place.
 		return 0;
 
 	// ---- Redwood Observatory (58) / Pillar of Fire (60) --------------------------
 	case Obj::REDWOOD_OBSERVATORY:
 	case Obj::PILLAR_OF_FIRE:
-		// SS 4.8 -> 0x432220(colour, 20, coord), "scouting-radius value".
-		// TODO: not expanded in the report.
-		return 0;
+	{
+		// SS 4.8a - 0x432220: one point per tile the object would newly reveal, plus a
+		// per-object-type bonus for anything revealed with an object on it.  The radius
+		// is 20 for these two (10 for the Eye of the Magi, SS 4G.3).
+		int revealed = 0;
+
+		for(int dy = -SCOUTING_RADIUS; dy <= SCOUTING_RADIUS; ++dy)
+		{
+			for(int dx = -SCOUTING_RADIUS; dx <= SCOUTING_RADIUS; ++dx)
+			{
+				if(std::sqrt(static_cast<double>(dx * dx + dy * dy)) > SCOUTING_RADIUS + 0.5)
+					continue;
+
+				const int3 probe(tile.x + dx, tile.y + dy, tile.z);
+
+				if(!ctx.cb->isInTheMap(probe) || ctx.cb->isVisible(probe))
+					continue;
+
+				++revealed;
+			}
+		}
+
+		// The per-object bonus table (0x6925AC) is a map-content lookup the AI cannot
+		// reach through a callback; the tile count is the dominant term.
+		return revealed;
+	}
 
 	// ---- Star Axis (61) ----------------------------------------------------------
 	case Obj::STAR_AXIS:
@@ -680,17 +756,61 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 		if(visitedByHero(hero, object))
 			return 0;
 
-		int64_t value = luckMoraleToAbsolute(hero, valueOfLuck(currentLuck(hero), 1))
-			+ luckMoraleToAbsolute(hero, valueOfMorale(currentMorale(hero), 1));
+		// SS 4.8a - 200 movement points, charged the same way as the Oasis.
+		int64_t movementTerm = 0;
 
-		// TODO: the movement-point term is not specified in the report.
-		return static_cast<int>(value);
+		if(moveLimit >= RALLY_FLAG_MOVEMENT)
+		{
+			moveLimit -= RALLY_FLAG_MOVEMENT;
+			movementTerm = luckMoraleToAbsolute(hero, valueOfMorale(currentMorale(hero), 1));
+		}
+		else
+		{
+			moveLimit = 0;
+			movementTerm = MOVEMENT_GRANT_SENTINEL;
+		}
+
+		// SS 4.8a - and then a shipped quirk worth reproducing exactly: the original
+		// adds the raw luck and morale FRACTIONS here without scaling them by army
+		// value, so after truncation they contribute nothing.  Written out rather than
+		// silently "fixed", because fixing it changes which objects the AI walks to.
+		const double rawFractions = valueOfMorale(currentMorale(hero), 1)
+			+ valueOfLuck(currentLuck(hero), 1);
+
+		return static_cast<int>(rawFractions + static_cast<double>(movementTerm));
 	}
 
 	// ---- Refugee Camp (78) -------------------------------------------------------
 	case Obj::REFUGEE_CAMP:
-		// SS 4.8 -> 0x52A700.  TODO: not expanded in the report.
-		return 0;
+	{
+		// SS 4.8a - 0x52A700 unpacks the creature offer and hands it to the army
+		// planner: a Refugee Camp is priced by exactly the value_of_adding that
+		// dwellings and town recruitment use, not by a bespoke formula.
+		const auto * dwelling = dynamic_cast<const CGDwelling *>(object);
+
+		if(dwelling == nullptr || dwelling->creatures.empty())
+			return 0;
+
+		// The exact form is planner.valueOfAdding over a copy of the hero's army, which
+		// accounts for slot capacity and alignment mixing.  ArmyPlanner has no public
+		// entry that takes a bare creature offer, so the same aiValue * count shape the
+		// creature-dwelling arm above uses is applied here; the difference shows only
+		// when the hero has no free slot for the offered stack.  Stated, not guessed.
+		int64_t best = 0;
+
+		for(const auto & offer : dwelling->creatures)
+		{
+			if(offer.second.empty() || offer.first <= 0)
+				continue;
+
+			const CCreature * creature = offer.second.front().toCreature();
+
+			if(creature != nullptr)
+				best = std::max<int64_t>(best, static_cast<int64_t>(creature->getAIValue()) * offer.first);
+		}
+
+		return static_cast<int>(best);
+	}
 
 	// ---- Resource (79) -----------------------------------------------------------
 	case Obj::RESOURCE:
@@ -720,8 +840,16 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 
 	// ---- Seer Hut (83) -----------------------------------------------------------
 	case Obj::SEER_HUT:
-		// SS 4.8 -> 0x5735A0, "quest reward minus quest cost".
-		// TODO: not expanded in the report.
+		// SS 4.8a - 0x5735A0:
+		//   reward = quest::AI_reward_value(quest, hero)
+		//   if (the hero has not been told the terms) return max(reward, 20);
+		//   if (the quest has expired)                return 0;
+		//   if (the hero cannot satisfy it)           return 0;
+		//   return reward - what handing the reward over costs us;
+		// where "today" is ((month * 4 + week) - 5) * 7 + dayOfWeek (SS 4.8a).
+		//
+		// TODO(VCMI): the reward and the completion test live on CQuest, which models
+		// them as a CRewardableObject configuration rather than a valued reward.
 		return 0;
 
 	// ---- Shipwreck Survivor (86) -------------------------------------------------
@@ -745,20 +873,118 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 
 	// ---- Sirens (92) -------------------------------------------------------------
 	case Obj::SIRENS:
-		// SS 4.8 -> 0x52A960, "XP for sacrificed troops".
-		// TODO: not expanded in the report.
-		return 0;
+	{
+		// SS 4.8a - 0x52A960.  Sirens take 30 % of every stack of more than one, and the
+		// AI prices the trade as (experience gained) - (army value lost), where the
+		// experience is re-valued against the REDUCED army: a smaller army makes each
+		// experience point worth less, which is what stops a strong hero sacrificing.
+		int64_t hpLost = 0;
+		int64_t valueAfter = 0;
+
+		for(const auto & slot : hero->Slots())
+		{
+			const CCreature * creature = hero->getCreature(slot.first);
+
+			if(creature == nullptr)
+				continue;
+
+			const int n = hero->getStackCount(slot.first);
+			const int keep = n <= 1 ? n : static_cast<int>(static_cast<float>(n) * SIRENS_KEEP_FRACTION);
+
+			hpLost += static_cast<int64_t>(creature->getMaxHealth()) * (n - keep);
+			valueAfter += static_cast<int64_t>(creature->getAIValue()) * keep;
+		}
+
+		const int64_t lost = armyAIValue(hero) - valueAfter;
+		const int64_t weighted = lost * (primarySkillSum(hero) + 40) / 40;
+
+		if(val.experienceValue == 0.0f)
+			return static_cast<int>(-weighted);
+
+		// The re-valued experience: (2500 + reducedArmy) / (40 * expForNextLevel).
+		const int64_t denominator = XP_VALUATION_LEVEL_DIVISOR * experienceForLevel(hero->level);
+		const float xpValueAfter = denominator > 0
+			? static_cast<float>(XP_VALUATION_BASE + valueAfter) / static_cast<float>(denominator)
+			: 0.0f;
+
+		return static_cast<int>(xpValueAfter * static_cast<float>(hpLost) - static_cast<float>(weighted));
+	}
 
 	// ---- Spell Scroll (93) -------------------------------------------------------
 	case Obj::SPELL_SCROLL:
-		// SS 4.8 -> 0x52A8C0.  TODO: not expanded in the report.
-		return 0;
+	{
+		// SS 4.8a - 0x52A8C0: a floor of 10, plus the guard fight if the scroll is
+		// guarded, plus the value of the spell itself when the hero does not have it.
+		if(backpackFull(hero))
+			return 0;
+
+		int64_t value = SPELL_SCROLL_FLOOR;
+		const CArmedInstance * guards = armyOf(object);
+
+		if(guards != nullptr && guards->stacksCount() > 0)
+			value = valueOfCombat(ctx.cb, *ctx.player, hero, nullptr, guards, nullptr) + SPELL_SCROLL_FLOOR;
+
+		// TODO(VCMI): the scroll's spell lives on the CArtifactInstance the object
+		// carries.  Where a caller can reach it, the remaining term is exactly
+		// aiGetSpellValue(hero, spell) gated on !hero->canCastThisSpell(spell).
+		return static_cast<int>(value);
+	}
 
 	// ---- Stables (94) ------------------------------------------------------------
 	case Obj::STABLES:
-		// SS 4.8 -> 0x52AAC0, "+400 mp".
-		// TODO: the report does not say how movement points are converted to value.
-		return 0;
+	{
+		// SS 4.8a - 0x52AAC0.  Two independent terms: the movement grant, charged to
+		// moveLimit exactly like the Oasis, and the Cavalier -> Champion upgrade.
+		int value = 0;
+
+		if(!visitedByHero(hero, object))
+		{
+			if(moveLimit >= STABLES_MOVEMENT)
+			{
+				moveLimit -= STABLES_MOVEMENT;
+				value = STABLES_SMALL_VALUE;
+			}
+			else
+			{
+				moveLimit = 0;
+				value = MOVEMENT_GRANT_SENTINEL;
+			}
+		}
+
+		// SS 4.8a - the original names the two creatures by raw id: 10 Cavalier,
+		// 11 Champion, confirmed against CRTRAITS.TXT.
+		const CCreature * cavalier = CreatureID(STABLES_CAVALIER).toCreature();
+		const CCreature * champion = CreatureID(STABLES_CHAMPION).toCreature();
+
+		if(cavalier == nullptr || champion == nullptr)
+			return value;
+
+		int64_t cavaliers = 0;
+		bool haveChampions = false;
+
+		for(const auto & slot : hero->Slots())
+		{
+			const CCreature * c = hero->getCreature(slot.first);
+
+			if(c == nullptr)
+				continue;
+
+			if(c->getId().getNum() == STABLES_CAVALIER)
+				cavaliers += hero->getStackCount(slot.first);
+			else if(c->getId().getNum() == STABLES_CHAMPION)
+				haveChampions = true;
+		}
+
+		if(cavaliers == 0)
+			return value;
+
+		int64_t gain = (champion->getAIValue() - cavalier->getAIValue()) * cavaliers;
+
+		if(haveChampions)
+			gain = static_cast<int64_t>(static_cast<double>(gain) * STABLES_MERGE_BONUS);
+
+		return static_cast<int>(value + gain);
+	}
 
 	// ---- Temple (96) -------------------------------------------------------------
 	case Obj::TEMPLE:
@@ -813,27 +1039,66 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 
 	// ---- Wagon (105) -------------------------------------------------------------
 	case Obj::WAGON:
-		// SS 4.8 - "artifact or resources".  TODO: the roll is server-side in VCMI.
-		return 0;
+		// SS 4.8a - 0x52B710.  As with the Windmill, the roll is never read: the Wagon
+		// mixes a fixed fraction of the average artifact value with a fixed fraction of
+		// the average resource value.
+		//   value = ftol(artifactValue * 2.0f / 5.0f) + avgResourceValue * 7 / 4
+		return static_cast<int>(ctx.player->artifactValue() * 2.0f / 5.0f)
+			+ ctx.player->averageResourceValue() * 7 / 4;
 
 	// ---- War Machine Factory (106) -----------------------------------------------
 	case Obj::WAR_MACHINE_FACTORY:
-		// SS 4.8 - "value of ballista/tent/cart minus cost".
-		// TODO: needs AI_get_value_of_artifact, which the report does not specify.
-		return 0;
+	{
+		// SS 4.8 / SS 4.9a - the three war machines priced through the artifact valuer,
+		// each minus its gold cost.  The Ballista, Ammo Cart and First Aid Tent arms of
+		// AI_get_value_of_artifact are the hard-coded ones (0x43373E / 0x4337D4 /
+		// 0x433837), so this needs no map state at all.
+		int64_t value = 0;
+
+		for(const int machine : { static_cast<int>(ArtifactID::BALLISTA),
+			static_cast<int>(ArtifactID::AMMO_CART),
+			static_cast<int>(ArtifactID::FIRST_AID_TENT) })
+		{
+			const ArtifactID id(machine);
+
+			if(hero->hasArt(id, false, true))
+				continue;
+
+			const int worth = artifactValueForHero(ctx, hero, id, false, false);
+			const int cost = static_cast<int>(WAR_MACHINE_COST * goldValue);
+
+			value += std::max(0, worth - cost);
+		}
+
+		return static_cast<int>(value);
+	}
 
 	// ---- School of War (107) -----------------------------------------------------
 	case Obj::SCHOOL_OF_WAR:
-		// SS 4.8 - "+1 attack/defence for 1000 gold".
-		// TODO: the report gives no valuation for a primary-skill point here; the AI's
-		// only documented primary-skill pricing is the XP route used by Arena.
-		return 0;
+		// SS 4.8a - 0x52B790.  There is NO valuation of a primary-skill point here: the
+		// original prices the School purely as an experience purchase minus the gold.
+		//
+		//   if (already used this school)            return 0;
+		//   if (player gold < 1000)                  return 0;
+		//   return expForNextLevel(level) * xpValue - 1000 * goldValue;
+		if(visitedByHero(hero, object))
+			return 0;
+
+		if(ctx.cb->getResourceAmount(GameResID::GOLD) < SCHOOL_OF_WAR_COST)
+			return 0;
+
+		return static_cast<int>(experienceReward(hero, val)
+			- SCHOOL_OF_WAR_COST * goldValue);
 
 	// ---- Warrior's Tomb (108) ----------------------------------------------------
 	case Obj::WARRIORS_TOMB:
-		// SS 4.8 - "artifact minus morale penalty".
-		// TODO: needs AI_get_value_of_artifact.
-		return 0;
+		// SS 4.8a - 0x5293D6.  The whole handler: skip if visited this week or the
+		// backpack is full, else the player's average artifact value.  There is no
+		// morale-penalty term, despite the object applying one in game.
+		if(visitedByHero(hero, object) || backpackFull(hero))
+			return 0;
+
+		return ctx.player->artifactValue();
 
 	// ---- Water Wheel (109) -------------------------------------------------------
 	case Obj::WATER_WHEEL:
@@ -847,14 +1112,27 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 		if(visitedByHero(hero, object))
 			return 0;
 
-		// TODO: the movement-point half of "morale + mp" is not specified.
+		// SS 4.8a - the same 0x52A1E0 helper as the Oasis, with a 200-point grant.
+		if(moveLimit < WATERING_HOLE_MOVEMENT)
+		{
+			moveLimit = 0;
+			return MOVEMENT_GRANT_SENTINEL;
+		}
+
+		moveLimit -= WATERING_HOLE_MOVEMENT;
+
 		return static_cast<int>(luckMoraleToAbsolute(hero, valueOfMorale(currentMorale(hero), 1)));
 	}
 
 	// ---- Windmill (112) ----------------------------------------------------------
 	case Obj::WINDMILL:
-		// SS 4.8 - "resource value".  TODO: the roll is server-side in VCMI.
-		return 0;
+		// SS 4.8a - 0x52949A.  The original does NOT read the roll: it prices the
+		// Windmill as a flat multiple of the player's average non-gold resource value.
+		//   value = playerData->d[0x160] * 9 / 2
+		if(visitedByHero(hero, object))
+			return 0;
+
+		return ctx.player->averageResourceValue() * 9 / 2;
 
 	// ---- Witch Hut (113) ---------------------------------------------------------
 	case Obj::WITCH_HUT:

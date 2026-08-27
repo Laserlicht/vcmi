@@ -16,6 +16,7 @@
 
 #include "../../lib/CPlayerState.h"
 #include "../../lib/StartInfo.h"
+#include "../../lib/callback/Calendar.h"
 #include "../../lib/callback/CCallback.h"
 #include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/mapObjects/CGTownInstance.h"
@@ -155,9 +156,16 @@ std::vector<HeroDestination> scanObjects(
 			if(value == 0)
 				continue;
 
-			// SS 4.4 - "if value < 0 and no 'critical' flag -> skip".
-			// TODO: the report names a "critical" flag but never says where it comes
-			// from; negative values are therefore always skipped.
+			// SS 4.4 / SS 4.5a - the "critical" flag is not a caller's argument at all: it
+			// is the influence-grid value at the HERO'S OWN cell, which
+			// AI_build_reachability (0x42F570) returns and AI_scan_objects keeps.  The
+			// rule is
+			//   value  > 0  -> keep
+			//   value  < 0  -> always skip
+			//   value == 0  -> keep only if gridValueAtHeroCell < 0
+			// so "critical mode" means "the hero is standing on a cell with negative
+			// influence", i.e. inside the danger map's threat zone: a hero under threat
+			// will accept a worthless destination just to be somewhere else.
 			if(value < 0)
 				continue;
 		}
@@ -389,11 +397,12 @@ int chooseDestination(
 	}
 
 	// ---- final pass over the object list ------------------------------------------
-	// SS 4.5 - "choosing the entry with the best value / cost trade-off, honouring the
-	// danger map".
-	// TODO: the report does not state the trade-off expression.  The influence grid
-	// already encodes distance decay, so the grid value at the entry's own cell is used
-	// as the score, which is the quantity Phase A exists to produce.
+	// SS 4.5 / SS 4.5a - "choosing the entry with the best value / cost trade-off,
+	// honouring the danger map".  The trade-off is a value-per-movement-point rate:
+	//   score = (cost > 100) ? value * 100 / cost : value;   floored at 1
+	// Costs at or below one grass step (100) are charged nothing.  Acceptance is
+	// lexicographic on (reachable-this-turn, turns, score) and the comparison is STRICT,
+	// so on a tie the FIRST entry in the scan list wins permanently.
 	int64_t bestScore = std::numeric_limits<int64_t>::min();
 	const HeroDestination * bestEntry = nullptr;
 
@@ -646,8 +655,11 @@ void heroTakeTurn(H3Context & ctx, const CGHeroInstance * hero, bool unlimitedRa
 			break;
 
 		// SS 4.3 - "if (!gpSearchArray->b[0x20]) break;"
-		// TODO: searchArray + 0x20 is cleared on entry to the pathfinder and the report
-		// never says what sets it, so the widening loop is never cut short here.
+		// SS 4.5a - searchArray + 0x20 is cleared at the top of searchArray::compute
+		// (0x56B46F) and written NOWHERE ELSE in the whole image.  AI_choose_destination
+		// always calls compute at least once, so by the time the loop tests the flag it
+		// is always 0: the five-attempt radius-doubling loop executes exactly ONE
+		// iteration.  Model it as a single pass - widening the radius is not faithful.
 
 		if(radius >= SEARCH_RADIUS_UNLIMITED)
 			break;
@@ -664,13 +676,23 @@ void heroTakeTurn(H3Context & ctx, const CGHeroInstance * hero, bool unlimitedRa
 		return;
 	}
 
-	// SS 4.3 - an unexplored destination below 75 is not worth walking to when the
-	// scenario mode word equals 7.
-	// TODO: gpGame + 0x1F63E ("scenario loss condition / mode word, checked == 7") has no
-	// VCMI counterpart, so this early-out is never taken.
-	if(!ctx.cb->isVisible(dest.coord) && value < UNEXPLORED_MIN_VALUE)
+	// SS 4.3 / SS 4.8a - an unexplored destination below 75 is not worth walking to on the
+	// last day of the week.  gpGame + 0x1F63E is the DAY OF THE WEEK (1..7), not a mode
+	// word: + 0x1F640 is the week within the month and + 0x1F642 the month, as the Seer
+	// Hut's date arithmetic ((month * 4 + week) - 5) * 7 + day proves.  The "== 7" test is
+	// therefore simply "is it the last day of the week" - the AI stops speculative
+	// exploration right before the weekly growth / recruitment tick.
+	// (VCMI makes the week length a game setting, so the original's literal 7 is written
+	// as "the last day of the week" rather than hard-coded.)
+	const Calendar calendar = ctx.cb->getCalendar();
+
+	if(!ctx.cb->isVisible(dest.coord) && value < UNEXPLORED_MIN_VALUE
+		&& calendar.getDayOfWeek() == calendar.getDaysInWeek())
 	{
-		// deliberately not returning here - see the TODO above
+		state.done = true;
+		state.destination = int3(-1, -1, -1);
+		state.destinationValid = false;
+		return;
 	}
 
 	const ObjectInstanceID heroId = hero->id;
@@ -746,9 +768,9 @@ void heroTurn(H3Context & ctx, const CGHeroInstance * hero, ValueMap & dangerMap
 	if(ctx.cb->getStartInfo()->difficulty > 0 || humanAlly)
 		addEnemyThreats(ctx, hero, dangerMap);
 
-	// 5. if the player has >= 10 wood and >= 1000 gold, mark the "can build" town flags.
-	// TODO: those flags (map-cell bits 0x800 and 0x08) exist only to bias the engine's
-	// own search array; the report does not say how they change its output.
+	// 5. SS 4.5a - map-cell bits 0x800 and 0x08 are inputs to searchArray::compute's own
+	//    terrain tests and are consumed inside the engine; nothing in the AI ever reads
+	//    them back.  An AI that owns its own pathfinder has nothing to reproduce here.
 
 	// 7. hero::AI_take_turn
 	heroTakeTurn(ctx, hero, aggressive, magusHutFlag);

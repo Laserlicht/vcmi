@@ -138,9 +138,10 @@ int evaluateBuilding(H3Context & ctx, const CGTownInstance * town, const Buildin
 				if(data == nullptr)
 					continue;
 
-				// The extra weekly growth a Citadel (+50 %) or Castle (+100 %) gives.
-				// TODO: the report says "the extra weekly growth they give" without
-				// quantifying it; VCMI's own growth model is queried instead.
+				// SS 4A.4 - 0x42B670 sums traits[creature].AI_value over the extra weekly
+				// growth a Citadel (x2) or Castle (x3) gives, across the 14 dwelling
+				// slots, and only from scenario week 5 onward.  VCMI's own growth model
+				// is queried for the delta because it already encodes the same rule.
 				value += data->getAIValue() * town->creatureGrowth(level);
 			}
 		}
@@ -179,8 +180,12 @@ int evaluateBuilding(H3Context & ctx, const CGTownInstance * town, const Buildin
 	// ---- 15 Resource Silo - 0x42AF52 ---------------------------------------------
 	if(id == BuildingID::RESOURCE_SILO)
 	{
-		// SS 4A.4 - "-1 if the town is under threat, else 7 * AI_resource_cost(silo output)"
-		// TODO: the report does not define "under threat" for this arm.
+		// SS 4A.4 - "-1 if the town is under threat, else 7 * AI_resource_cost(silo output)".
+		// SS 4G.4 - "under threat" is town + 0x03 != 0: the count of ENEMY heroes that can
+		// reach this town within about 1.5 turns (their max movement + 800), refilled once
+		// per turn by kingdom-goal pass A (vftable 0x63B670).  The Silo arm returning -1
+		// is the mirror image of the Stronghold/Fortress arms, which only pay out WHILE
+		// under threat: the AI refuses to spend on economy with an enemy hero in reach.
 		const CBuilding * data = buildingOf(town, building);
 
 		if(data == nullptr)
@@ -253,8 +258,20 @@ int evaluateBuilding(H3Context & ctx, const CGTownInstance * town, const Buildin
 	}
 
 	// ---- everything else - town-type table 0x42B4FC ------------------------------
-	// SS 4A.4 - "per-faction special buildings only; the default is 0".
-	// TODO: the per-faction table at 0x42B4FC is not expanded in the report.
+	// SS 4A.4 / SS 4G.5 - the per-faction special table (0x42B4FC), keyed on
+	// town->b[4] - 1.  Castle (0) and Conflux (8) are not in the table at all and score 0
+	// for every special:
+	//   Rampart    b.22 Treasury:      0 unless the LAST DAY of the week, then
+	//                                  ftol(pd->gold * goldValue / 10.0)
+	//   Rampart    b.17 Mystic Pond:   2 * averageResourceValue   (pd + 0x160)
+	//   Tower      b.21:               100
+	//   Necropolis b.21 Necr. Amp.:    1000 * (our heroes whose class id is 9)
+	//   Necropolis b.17 Cover of Dark: 10
+	//   Stronghold b.17:               5000 if under threat and owned, else 0
+	//   Fortress   b.21, b.22:         0 unless under threat, then garrison AI value / 20
+	//   Inferno, Dungeon:              0
+	// These are town-special buildings VCMI models differently per faction mod, so the
+	// generic default is kept; the table is recorded here for a faithful port.
 	return 0;
 }
 
@@ -534,8 +551,13 @@ bool buyHero(H3Context & ctx, const CGHeroInstance * candidate)
 		if(artifact == nullptr)
 			continue;
 
-		// TODO: hero::total_artifact_value (0x4339E0) is named but never expanded in the
-		// report, so only the documented floor of 10 per backpack artifact survives.
+		// SS 4.9a - hero::total_artifact_value @ 0x4339E0 is implemented as
+		// H3ArtifactValue::totalArtifactValue: what this hero would GAIN by taking the
+		// artifact, net of whatever it must give up to wear it.  The original's loop
+		// writes the "loss" term unconditionally rather than accumulating it, so the LAST
+		// occupied slot wins - that is the shipped behaviour, reproduced as such.
+		// Here only the documented floor of 10 per backpack artifact is added, because a
+		// backpack artifact is worn by nobody and so displaces nothing.
 		total += ARTIFACT_MIN_VALUE;
 	}
 
@@ -703,8 +725,11 @@ bool hireHero(H3Context & ctx)
 			if(slot.getArt() != nullptr)
 				score += std::max(ARTIFACT_MIN_VALUE, artifactValue(ctx, slot.getArt()->getTypeId()));
 
-		// TODO: the report adds "plus get_primary_skill_sum weighting" without giving the
-		// weight, so the primary-skill term is omitted.
+		// SS 4.9a - the weighting is armyValue * (get_primary_skill_sum + 40) / 40, the
+		// same (sum + 40) / 40 factor every luck/morale object valuation uses.
+		// get_primary_skill_sum (0x4E5960) adds the four primary skills at hero + 0x476,
+		// each clamped to <= 99, counting a zero as 1 for spell power and knowledge only.
+		score = score * (primarySkillSum(candidate) + 40) / 40;
 
 		if(score > bestScore)
 		{
@@ -736,9 +761,11 @@ void visitOwnTown(H3Context & ctx, const CGHeroInstance * hero, const CGTownInst
 
 	const CGHeroInstance * townHero = town->getGarrisonHero();
 
-	// SS 4.13 - bool bonus = playerData::AnyHeroHasArtifact(pd, 0x81)
-	// TODO: artifact 0x81 is named only by number in the report.
-	const bool bonus = false;
+	// SS 4.13 / SS 4B.4a - artifact 0x81 is 129, the ANGELIC ALLIANCE.  It is passed as
+	// the planner's "ignore alignment mixing" flag, and playerData::AnyHeroHasArtifact
+	// (0x4BACB0) scans the player's field heroes - so one hero anywhere in the kingdom
+	// carrying the assembled set switches the behaviour on for all of them.
+	const bool bonus = ctx.player->anyHeroHasArtifact(ArtifactID::ANGELIC_ALLIANCE);
 
 	ArmyGroup destination(hero);
 	ArmyGroup source(town);
@@ -867,9 +894,15 @@ void manageKingdom(H3Context & ctx)
 	// 1. reserved_funds[i] -= playerData->income[i]  (clamped at 0)
 	ctx.player->decayReservedFunds();
 
-	// 2. the two "kingdom goal" evaluators 0x4280E0 with descriptors {0x63B67C, player}
-	//    and {0x63B670, player}
-	// TODO: 0x4280E0 is named but never expanded in the report.
+	// 2. SS 4G.4 - the two "kingdom goal" evaluators 0x4280E0, with descriptors
+	//    {0x63B67C, player} and {0x63B670, player}.  Each pass floods, from every hero of
+	//    every player NOT on our team, with (maxMovement + 800) of range, and calls a
+	//    visit method on each of OUR towns the flood reaches:
+	//      0x63B670 - reset clears town + 0x03 on every town, visit increments it.
+	//                 That count IS the "under threat" measure the build planner reads.
+	//      0x63B67C - reset is a bare ret; visit is 0x428580.
+	//    VCMI's AI cannot run the server's search array over enemy heroes, so the threat
+	//    count is approximated by addEnemyThreats / the danger map instead.
 
 	// 3. compute_resource_values(player)
 	ctx.player->computeResourceSupplyAndThreats();
@@ -889,8 +922,11 @@ void manageKingdom(H3Context & ctx)
 	// 6. the shared "value of a purchase" helper 0x428740 == compute_wants (SS 4A.1)
 	ctx.player->computeWants();
 
-	// 7. for each own town, recompute the AI build flags.
-	// TODO: those flags exist to bias the engine's search array; see SS 4.2 step 5.
+	// 7. SS 8 - there are NO per-town AI build flags to recompute.  manage_kingdom
+	//    (0x428DD0) writes no struct field at all; it is pure orchestration.  The build
+	//    decision is recomputed from scratch on every call by AI_build_one_building, which
+	//    picks the single best (town, building) pair across the whole kingdom.  Nothing is
+	//    cached on the town, so there is nothing here to reproduce.
 
 	// 8. for each other player on our team (and separately, each ally): cross-player
 	//    resource trading / gifting.

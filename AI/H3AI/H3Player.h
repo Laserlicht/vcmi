@@ -75,6 +75,10 @@ public:
 	/// It is recomputed here as a flat placeholder; see H3Player.cpp.
 	int artifactValue() const { return avgArtifactValue; }
 
+	/// SS 4G.1 - playerData + 0x164 is written by advManager::AI_prepare, not by
+	/// compute_wants, so it is supplied from the turn driver where H3Context exists.
+	void setAverageArtifactValue(int value) { avgArtifactValue = value; }
+
 	/// SS 2 - type_AI_player + 0x04, the magus-hut value (SS 4.8, object 37).
 	int magusHutValue() const { return magusHut; }
 	/// SS 4.3 - AI_player::reset_magus_hut_value @ 0x429AB0.
@@ -86,6 +90,11 @@ public:
 
 	/// SS 4A.5 - the "creature flagged as undesirable" byte array.
 	bool creatureFlagged(const CreatureID & creature) const;
+
+	/// SS 4B.4a - playerData::AnyHeroHasArtifact(pd, 0x81) @ 0x4BACB0.  Artifact 0x81 is
+	/// 129 = Angelic Alliance; the army planner takes it as its `angelicAlliance` flag,
+	/// which is what suppresses the alignment-morale penalty.
+	bool anyHeroHasArtifact(const ArtifactID & artifact) const;
 
 	/// SS 4.10 step 1 - reserved_funds[i] -= income[i], clamped at 0.
 	void decayReservedFunds();

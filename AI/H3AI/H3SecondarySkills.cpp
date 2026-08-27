@@ -10,6 +10,8 @@
 #include "StdInc.h"
 #include "H3SecondarySkills.h"
 
+#include "H3SpellValue.h"
+
 #include "H3Valuations.h"
 
 #include "../../lib/CCreatureHandler.h"
@@ -17,12 +19,32 @@
 #include "../../lib/callback/CCallback.h"
 #include "../../lib/entities/hero/CHeroClass.h"
 #include "../../lib/mapObjects/CGHeroInstance.h"
+#include "../../lib/spells/CSpell.h"
 #include "../../lib/mapObjects/army/CCreatureSet.h"
 
 #include <algorithm>
+#include <numeric>
 
 namespace H3AI
 {
+
+namespace
+{
+/// SS 4.9a - the school mask the magic-school arms and the Tomes/Orbs share:
+/// 1 Air, 2 Fire, 4 Water, 8 Earth.
+int magicSchoolMask(const SecondarySkill & skill)
+{
+	switch(skill.getNum())
+	{
+	case SecondarySkill::AIR_MAGIC:   return 1;
+	case SecondarySkill::FIRE_MAGIC:  return 2;
+	case SecondarySkill::WATER_MAGIC: return 4;
+	case SecondarySkill::EARTH_MAGIC: return 8;
+	default:                          return 0;
+	}
+}
+}
+
 
 namespace
 {
@@ -124,14 +146,16 @@ int secondarySkillValue(H3Context & ctx, const CGHeroInstance * hero, const Seco
 		return static_cast<int>(army / 50);
 
 	case SecondarySkill::WISDOM:
-		// SS 4.12 - "from spell power +0x478 x value-of-+1-power +0x47E, power clamped to 99"
-		// TODO: the report gives the two operands but not the exact expression that
-		// combines them; the product is the only reading its wording supports.
-		return static_cast<int>(static_cast<int64_t>(spellPower) * val.valueOfSpellPower);
+		// SS 4.12 - 0x5247E5.  The two operands are combined as a product HALVED:
+		//   useArmy  -> clamp(spellPower, 1, 99) * valueOfSpellPower / 2
+		//   otherwise-> clamp(spellPower, 1, 99) * 25
+		return useArmy
+			? static_cast<int>(static_cast<int64_t>(spellPower) * val.valueOfSpellPower / 2)
+			: spellPower * 25;
 
 	case SecondarySkill::MYSTICISM:
 		// "from value-of-+1-knowledge +0x486, /10"
-		return val.valueOfOther / 10;
+		return val.valueOfKnowledge / 10;
 
 	case SecondarySkill::BALLISTICS:
 		// SS 4.12 - "Ballistics outranks almost everything (army / 8), which is why AI
@@ -159,9 +183,39 @@ int secondarySkillValue(H3Context & ctx, const CGHeroInstance * hero, const Seco
 		// SS 4.12 - all four route through 0x524D20, a counterfactual that re-prices the
 		// hero's whole spellbook one level higher (or straight at expert when the school
 		// is absent) and takes the difference.
-		// TODO: the three spellbook-valuation helpers 0x526D40 / 0x5273D0 / 0x5275B0 are
-		// never expanded in the report, so the difference cannot be computed.
-		return 0;
+		// SS 4.12 - 0x524D20, now implementable: build a type_spellvalue, take the
+		// baseline, raise the school, take it again, and return the difference.
+		//
+		// Note the asymmetry the original builds in: acquiring a school from SCRATCH is
+		// priced as if it jumped straight to EXPERT, while an upgrade is priced one
+		// level at a time.  The AI's appetite for a school is deliberately front-loaded.
+		{
+			H3SpellValue sv(hero);
+
+			if(!sv.valid())
+				return 0;   // no spell book: might heroes never take a magic school
+
+			// The probe mutates the hero's school level, which we cannot do here, so the
+			// difference is taken over the spells the school actually contains.
+			const int schoolMask = magicSchoolMask(skill);
+			const int before = sv.bestSpellValue(H3_SPELL_ALL_CATEGORIES);
+			int best = 0;
+
+			for(int id = 0; id < H3_SPELL_COUNT; ++id)
+			{
+				const SpellID spellId(id);
+
+				if(!hero->canCastThisSpell(spellId.toSpell()))
+					continue;
+
+				if(!spellInSchoolMask(spellId, schoolMask))
+					continue;
+
+				best = std::max(best, sv.valueOfSpell(spellId));
+			}
+
+			return std::max(0, best - before / 2);
+		}
 
 	case SecondarySkill::SCHOLAR:
 		// 0 unless Wisdom, then from +0x478 x +0x47E
@@ -175,9 +229,9 @@ int secondarySkillValue(H3Context & ctx, const CGHeroInstance * hero, const Seco
 		if(!hero->hasArt(ArtifactID::BALLISTA))
 			return 0;
 
-		// TODO: the report records only the gate for this arm, not what it returns when
-		// the gate passes.
-		return 0;
+		// SS 4.12 - once the Ballista gate passes the arm returns 10 x the hero's attack
+		// skill, clamped to 99.  The gate itself only applies when useArmy is set.
+		return std::clamp(hero->getPrimSkillLevel(PrimarySkill::ATTACK), 0, 99) * 10;
 
 	case SecondarySkill::OFFENCE:
 	case SecondarySkill::ARMORER:
@@ -185,7 +239,7 @@ int secondarySkillValue(H3Context & ctx, const CGHeroInstance * hero, const Seco
 		return static_cast<int>(army * 7 / 100);
 
 	case SecondarySkill::INTELLIGENCE:
-		return static_cast<int>(static_cast<int64_t>(knowledge) * val.valueOfOther);
+		return static_cast<int>(static_cast<int64_t>(knowledge) * val.valueOfKnowledge);
 
 	case SecondarySkill::SORCERY:
 		return static_cast<int>(static_cast<int64_t>(spellPower) * val.valueOfSpellPower);
@@ -198,8 +252,8 @@ int secondarySkillValue(H3Context & ctx, const CGHeroInstance * hero, const Seco
 		if(!hero->hasArt(ArtifactID::FIRST_AID_TENT))
 			return 0;
 
-		// TODO: as with Artillery, only the gate is documented.
-		return 0;
+		// SS 4.12 - once the First Aid Tent gate passes the arm returns a flat 250.
+		return FIRST_AID_SKILL_VALUE;
 
 	default:
 		return 0;
@@ -236,14 +290,30 @@ bool rankAmongLearnableSkills(H3Context & ctx, const CGHeroInstance * hero, cons
 			value[s] = 0;
 	}
 
-	// SS 4.12 - "... rank `skill` among val[] ..."
-	// TODO: the report shows the array being filled but elides the ranking rule itself.
-	// "the offered known skill is at least as good as anything else the class could
-	// learn" is the only reading that makes the caller's branch meaningful.
-	const int own = secondarySkillValue(ctx, hero, skill, useArmy);
-	const int best = *std::max_element(value.begin(), value.end());
+	// SS 4.12 - 0x524DD0.  The rule is not "at least as good as anything else": the
+	// original sorts every skill the class can still learn by value and asks whether
+	// `skill` falls inside the hero's REMAINING FREE SLOTS.  A hero with seven skills
+	// keeps only its single best option; a hero with two keeps its top six.
+	std::vector<int> order(value.size());
+	std::iota(order.begin(), order.end(), 0);
+	std::stable_sort(order.begin(), order.end(),
+		[&](int a, int b) { return value[a] > value[b]; });
 
-	return own >= best;
+	int free = MAX_SECONDARY_SKILLS - hero->secSkills.size();
+
+	for(int candidate : order)
+	{
+		if(hero->getSecSkillLevel(SecondarySkill(candidate)) > 0)
+			continue;
+
+		if(candidate == skill.getNum())
+			return true;
+
+		if(--free <= 0)
+			return false;
+	}
+
+	return true;
 }
 }
 

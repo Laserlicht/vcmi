@@ -215,9 +215,16 @@ void H3Search::compute(CCallback * cb, const CGHeroInstance * hero, const int3 &
 
 			target.reachable = true;
 			target.cost = newCost;
-			// TODO: the original stores the turn count in cell + 0x1A, produced by the
-			// engine's own per-turn movement accounting.  The report does not give that
-			// accounting, so the turn index is derived from the accumulated cost here.
+			// SS 4.5a - the 30-byte search-cell record has TWO int16 cost fields, both
+			// seeded to 0, told apart only by their consumers:
+			//   + 0x1A  the raw movement cost.  A monolith / gate step adds a flat 50 to
+			//           THIS field, and it is what AI_object_value gets as its `limit`.
+			//   + 0x18  the turn-adjusted cost, compared against visited[] in the
+			//           friendly-hero suppression and against hero->mp when the chooser
+			//           writes hero + 0x41.
+			// This supersedes the looser earlier gloss that put cost at + 0x18 and a turn
+			// count at + 0x1A: neither field is a turn index, so deriving one from the
+			// accumulated cost is the correct reproduction.
 			target.turns = newCost / maxMovePoints;
 			target.predecessor = current;
 
@@ -300,14 +307,28 @@ void buildReachability(
 		H3Search otherSearch;
 		otherSearch.compute(cb, other, other->visitablePos(), other->movementPointsLimit(), -1, openMap);
 
-		// SS 4B.7 - "walk tmp's reachable-cell list and suppress those cells in `visited`",
-		// handicapped by how far that hero still is from its own goal.
-		// TODO: the report shows the handicap being computed but never shows how it is
-		// applied to the suppression test.  The cells are therefore suppressed outright.
-		(void)handicap;
-
+		// SS 4B.7 / SS 4.5a - "walk tmp's reachable-cell list and suppress those cells in
+		// `visited`", handicapped by how far that hero still is from its own goal.  The
+		// handicap is applied as a COST FLOOR, not a mask: for every other friendly hero H,
+		//   visited[cell] = min(visited[cell], H_cost + handicap)
+		// with handicap <= 0.  AI_scan_objects then skips an object when
+		//   g_objectSuppressible[objType] && ourCost > visited[cell]
+		// so a strictly cheaper friendly hero claims the object and an equal one does not.
+		// A hero still far from its own destination gets a NEGATIVE handicap, is treated
+		// as closer than it is, and therefore claims more cells.
+		//
+		// One shipped bug worth knowing: g_objectSuppressible is filled by walking a list
+		// of 37 object-type ids and writing 1 to d[0..36] rather than d[id], so the
+		// suppressible set is object types 0-36 and overlaps the intended set only by
+		// accident.
 		for(const int3 & tile : otherSearch.reachedCells())
-			out.at(tile).suppressed = true;
+		{
+			SearchCell & cell = out.at(tile);
+			const int costFloor = otherSearch.at(tile).cost + handicap;
+
+			if(cell.cost > costFloor)
+				cell.suppressed = true;
+		}
 	}
 }
 

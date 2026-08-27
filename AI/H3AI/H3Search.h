@@ -32,9 +32,13 @@ struct SearchCell
 {
 	/// cell + 0x04 bit 0 - the cell is in the tree
 	bool reachable = false;
-	/// cell + 0x18 - accumulated movement cost (held as unsigned 16-bit in the original)
+	/// SS 4.5a - cell + 0x18, the TURN-ADJUSTED cost (unsigned 16-bit in the original).
+	/// Compared against visited[] in the friendly-hero suppression, and against hero->mp
+	/// when the chooser writes hero + 0x41.
 	int cost = std::numeric_limits<int>::max();
-	/// cell + 0x1A - turn count
+	/// SS 4.5a - the original has no turn field.  cell + 0x1A is the RAW movement cost
+	/// (a monolith / gate step adds a flat 50 to it, and it is what AI_object_value
+	/// receives as its `limit`); the turn index here is derived from the accumulated cost.
 	int turns = 0;
 	/// cell + 0x0C - packed coord of the Dijkstra predecessor
 	int3 predecessor = int3(-1, -1, -1);

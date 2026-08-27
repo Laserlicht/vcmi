@@ -57,8 +57,22 @@ int townVisitValue(H3Context & ctx, const CGHeroInstance * hero, const CGTownIns
 		? stateIt->second.valuations
 		: computeHeroValuations(hero);
 
-	// SS 4B.3 - the Conflux arm (town type 8) routes to 0x525BF0.
-	// TODO: 0x525BF0 is not expanded in the report.
+	// SS 4B.3 - the Conflux arm (town type 8) routes to 0x525BF0, the Magic University
+	// visit value:
+	//   __thiscall(hero *this /*ecx*/, int *skills /*edx*/, bool chargesGold /*stack*/)
+	//   if (hero->d[0x101] >= 8)                     return 0;   // 8 secondary skills
+	//   if (chargesGold && gpCurPlayer->gold < 2000) return 0;   // pd + 0xB4
+	//   total = 0;
+	//   for (each of the 4 skills the university offers) {
+	//       if (!g_heroClass[hero->d[0x30]].b[0x18 + skill]) continue;  // class cannot learn
+	//       if (hero->secSkill[skill] /*+0xC9*/ > 0)         continue;  // already has it
+	//       if (!hero::can_learn_skill(hero, skill, 1))      continue;  // 0x524DD0
+	//       total += hero::AI_secondary_skill_value(hero, skill, 1);    // 0x524690, SS 4.12
+	//   }
+	//   return total;
+	// The class table is at [0x67DCEC], 64 bytes per class, with the per-skill
+	// "this class may learn it" bytes at + 0x18.
+	// VCMI has no Magic University object, so there is nothing to evaluate here.
 
 	if(town->mageGuildLevel() > 0)
 	{
@@ -89,7 +103,9 @@ int townVisitValue(H3Context & ctx, const CGHeroInstance * hero, const CGTownIns
 		switch(town->getFactionID().getNum())
 		{
 		case 2: // Tower
-			v += val.valueOfOther;
+			// SS 4B.3 - hero->d[0x486], the value of +1 KNOWLEDGE (+0x482 is spell
+			// duration; the two were transposed in an earlier reading).
+			v += val.valueOfKnowledge;
 			break;
 
 		case 3: // Inferno
@@ -124,18 +140,20 @@ int townRecruitValue(H3Context & ctx, const CGHeroInstance * hero, const CGTownI
 
 	ArmyPlanner planner(ctx.cb, ctx.player);
 
-	// SS 4B.5 - bool flag = playerData::get_flag(pd, 0x81)
-	// TODO: artifact 0x81 (129) is named only by number in the report; what it controls
-	// (the planner's `mode`) is documented, but which artifact it is is not.
-	const bool flag = false;
+	// SS 4B.5 - bool flag = playerData::get_flag(pd, 0x81).  SS 4B.4a: artifact 0x81 is
+	// 129, the Angelic Alliance; it is passed as the planner's `angelicAlliance` flag,
+	// which is what lets the planner ignore the alignment-morale penalty.
+	const bool flag = ctx.player->anyHeroHasArtifact(ArtifactID::ANGELIC_ALLIANCE);
 
 	const int64_t exchangeVal = planner.evaluateTroopExchange(hero, town, nullptr, flag);
 	const int64_t buyVal = planner.evaluatePurchase(town, hero, flag);
 
-	// SS 4B.5 - refuse an exchange that guts the hero.
-	// TODO: `plan.armyValueAfter` is a planner field the report names here but never
-	// lists in the SS 4B.4 layout table, so the guard cannot be evaluated exactly.  The
-	// value of the army after the simulated exchange is used, which is what the name says.
+	// SS 4B.5 / SS 4B.4a - refuse an exchange that guts the hero.  `plan.armyValueAfter`
+	// is the planner field at plan + 0x18, maintained as the planner buys and exchanges;
+	// 0x52B090 reads it at [ebp-0x3C] with the planner at [ebp-0x54].  The guard is
+	//   if (moveLimit >= 400 && plan.d[0x18] < armyGroup::get_AI_value(&hero->army) / 3)
+	//       return 0;
+	// (/3 is the 0x55555556 magic with no shift).
 	if(moveLimit >= RECRUIT_VALUE_MOVE_LIMIT)
 	{
 		const int64_t before = armyAIValue(hero);
@@ -182,10 +200,11 @@ int townCaptureValue(H3Context & ctx, const CGHeroInstance * hero, const CGTownI
 			v += 3 * ctx.player->resourceCost(production);
 	}
 
-	// SS 4B.2 - weeksAhead = (moveLimit - hero->mp) / hero->maxMp + gpGame->w[0x1F63E]
-	// gpGame + 0x1F63E is the scenario "loss condition"/mode word (SS 2).
-	// TODO: adding a scenario mode word to a week count is what the instruction stream
-	// says, but the report offers no interpretation of it, so the term is dropped.
+	// SS 4B.2 - weeksAhead = (moveLimit - hero->mp) / hero->maxMp + gpGame->w[0x1F63E].
+	// SS 4.8a - gpGame + 0x1F63E is the DAY OF THE WEEK (1..7), not a mode word;
+	// + 0x1F640 is the week and + 0x1F642 the month, which the Seer Hut's date
+	// arithmetic ((month * 4 + week) - 5) * 7 + day confirms.  Adding the day of the
+	// week makes the growth term tip over into "a whole week" late in the week.
 	const int maxMp = std::max(1, hero->movementPointsLimit());
 	const int weeksAhead = (moveLimit - hero->movementPointsRemaining()) / maxMp;
 	const bool wholeWeek = weeksAhead >= 7;
@@ -285,9 +304,10 @@ int townValue(H3Context & ctx, const CGHeroInstance * hero, const CGTownInstance
 	}
 
 	// SS 4B.1 - artifact hand-off to the hero garrisoned here, over the 5-entry table at
-	// 0x640558..0x64056C.
-	// TODO: the report gives the table's address but not its contents, so which five
-	// artifacts are handed over cannot be reproduced.
+	// 0x640558..0x64056C.  SS 4.9b - the five ids are the Legion set: 118 Legs,
+	// 119 Loins, 120 Torso, 121 Arms, 122 Head of Legion (the same table
+	// type_statue_of_legion_artifact scans).  The hand-off itself is a game-state
+	// mutation, which an AI cannot perform in VCMI; only the valuation is reproduced.
 
 	// SS 4B.1 - hero swap (difficulty > 0 and we own more than one hero).
 	if(ctx.cb->howManyHeroes(false) > 1 && ctx.cb->getStartInfo()->difficulty > 0)

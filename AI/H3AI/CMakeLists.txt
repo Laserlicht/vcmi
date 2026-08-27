@@ -1,6 +1,8 @@
 set(h3AI_SRCS
 		H3AI.cpp
 		H3ArmyPlanner.cpp
+		H3ArtifactValue.cpp
+		H3SpellValue.cpp
 		H3CombatEstimate.cpp
 		H3Kingdom.cpp
 		H3Movement.cpp
@@ -18,6 +20,10 @@ set(h3AI_HEADERS
 
 		H3AI.h
 		H3ArmyPlanner.h
+		H3ArtifactData.h
+		H3ArtifactValue.h
+		H3SpellData.h
+		H3SpellValue.h
 		H3CombatEstimate.h
 		H3Constants.h
 		H3Kingdom.h

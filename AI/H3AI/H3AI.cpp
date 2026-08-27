@@ -10,6 +10,7 @@
 #include "StdInc.h"
 #include "H3AI.h"
 
+#include "H3ArtifactValue.h"
 #include "H3Kingdom.h"
 #include "H3SecondarySkills.h"
 #include "H3Valuations.h"
@@ -23,6 +24,7 @@
 #include "../../lib/battle/BattleAction.h"
 #include "../../lib/callback/CCallback.h"
 #include "../../lib/logging/CLogger.h"
+#include "../../lib/entities/artifact/CArtifact.h"
 #include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/mapObjects/CGTownInstance.h"
 
@@ -178,7 +180,32 @@ void H3AdventureAI::takeTurn()
 	player.beginTurn();
 
 	// 4. advManager::AI_prepare(player)  -> 0x527960
-	// TODO: 0x527960 is named in SS 4.1 but never expanded in the report.
+	// SS 4G.1 - advManager::AI_prepare @ 0x527960 does three things, in order:
+	//   1. hero::AI_update_valuations on every hero we own (SS 4.9b);
+	//   2. playerData + 0x164 = the MEAN of AI_get_value_of_artifact over every artifact
+	//      whose traits byte + 0x1C is zero, priced against our best-placed hero;
+	//   3. the two difficulty-derived combat bonuses, which are NOT constants - see
+	//      H3Player::getAttackBonus.
+	// Step 1 is the per-hero valuation refresh below.  Step 2:
+	{
+		int64_t sum = 0;
+		int n = 0;
+
+		for(int a = AI_PREPARE_FIRST_ARTIFACT; a <= AI_PREPARE_LAST_ARTIFACT; ++a)
+		{
+			const ArtifactID id(a);
+			const CArtifact * art = id.toArtifact();
+
+			// traits + 0x1C != 0 means "not AI-tradable" in the original
+			if(art == nullptr || !art->isTradable())
+				continue;
+
+			++n;
+			sum += artifactValueForPlayer(ctx, id);
+		}
+
+		player.setAverageArtifactValue(n > 0 ? static_cast<int>(sum / n) : 0);
+	}
 
 	// 5. the "computer is thinking" progress counter is pure UI.
 
@@ -194,8 +221,13 @@ void H3AdventureAI::takeTurn()
 	bool magusHutFlag = true;
 
 	// 6. PASS 1 - special heroes.
-	// TODO: AI_pick_special_hero (0x526A90) is named in SS 4.1 but the report never says
-	// what makes a hero "special", so this pass is not reproduced.
+	// SS 4G.2 - AI_pick_special_hero @ 0x526A90.  "Special" means the LEAST developed
+	// hero that is not already committed to a destination - the scout:
+	//   skip heroes with no movement left or already done this turn;
+	//   prefer one with no previous destination (hero + 0x44 == 0xFF);
+	//   among equals, prefer the LOWER get_primary_skill_sum.
+	// If nobody can move it falls back to waking a garrisoned hero out of a town, which
+	// is why AI towns so often empty themselves late in a turn.
 
 	// 7. KINGDOM PHASE
 	manageKingdom(ctx);
@@ -329,9 +361,10 @@ void H3AdventureAI::heroGotLevel(const CGHeroInstance * hero, PrimarySkill pskil
 
 	if(skills.size() >= 2)
 	{
-		// SS 4.12 - the `useArmy` argument.
-		// TODO: the report does not say what the caller passes for it.  true is used,
-		// which is the reading under which the whole SS 4.12 table is army-scaled.
+		// SS 4.12 - hero::LevelUp passes useArmy = TRUE.  The flag does two things: it
+		// turns on the army / shooter accumulation, AND it enables the four prerequisite
+		// gates (Eagle Eye and Scholar need Wisdom, Artillery a Ballista, First Aid a
+		// Tent).  No AI call site in the original passes false.
 		chosen = chooseSecondarySkill(ctx, hero, skills[0], skills[1], true);
 	}
 

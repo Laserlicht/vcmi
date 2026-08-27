@@ -33,10 +33,17 @@ struct HeroValuations
 	float experienceValue = 0.0f;
 	/// hero + 0x47E - the AI value of +1 spell power (floored at 10).
 	int valueOfSpellPower = 0;
-	/// hero + 0x482 - the AI value of +1 knowledge.
+	/// hero + 0x482 - the AI value of +1 spell DURATION.  SS 4.9b: the probe that
+	/// produces it increments the duration alone, and type_duration_artifact (the Ring
+	/// of the Magi) is its only consumer.  An earlier draft labelled this "knowledge".
+	int valueOfSpellDuration = 0;
+	/// hero + 0x486 - the AI value of +1 knowledge (floored at 10).  This is the field
+	/// Garden of Revelation, Library of Enlightenment, Mysticism and Intelligence read.
 	int valueOfKnowledge = 0;
-	/// hero + 0x486 - the value Garden of Revelation / Library of Enlightenment use.
-	int valueOfOther = 0;
+	/// hero + 0x48E - the value of refilling mana to the maximum (Magic Well).
+	int valueOfFullMana = 0;
+	/// hero + 0x48A - the value of mana up to twice the maximum (Magic Spring).
+	int valueOfDoubleMana = 0;
 };
 
 /// SS 4.1 - hero::get_primary_skill_sum (0x4E5960).  Also the scale factor of every
@@ -80,5 +87,26 @@ bool isAlignmentFree(const CCreature * creature);
 
 /// SS 4E.2 - traits + 0x10 bit 1: flying.
 bool isFlying(const CCreature * creature);
+
+/// SS 4E.2 - traits + 0x10 bit 4: "living".  The bit the Elixir of Life filters on and
+/// the one hero::creature_hp_bonus (0x4E5B80) tests before adding hp/4.
+bool isLiving(const CCreature * creature);
+
+/// SS 4.9 - hero::get_morale @ 0x4E39B0, clamped to [-3, +3].
+int currentMorale(const CGHeroInstance * hero);
+
+/// SS 4.9 - hero::get_luck @ 0x4E36C0, clamped to [-3, +3].
+int currentLuck(const CGHeroInstance * hero);
+
+/// SS 4.9a - hero::necromancy_fraction @ 0x4E3CD0: the share of a defeated army the
+/// hero raises, as a fraction (0.10 / 0.20 / 0.30 plus artifacts and specialty).
+double necromancyFraction(const CGHeroInstance * hero);
+
+/// SS 4.9a - hero::first_aid_amount @ 0x4E4920, the multiplier the First Aid Tent arm
+/// scales by 25.
+double firstAidAmount(const CGHeroInstance * hero);
+
+/// SS 4.9a - the school mask the Tomes and Orbs carry: 1 Air, 2 Fire, 4 Water, 8 Earth.
+bool spellInSchoolMask(const SpellID & spell, int mask);
 
 }

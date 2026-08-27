@@ -19,14 +19,45 @@
 namespace H3AI
 {
 
-/// SS 4.11 - 0x6604D0, multiplier applied to the *defender's* simulated army,
-/// indexed by game difficulty (0 Easy .. 4 Impossible).
+/// SS 4.11 / SS 6A.3 - 0x6604D0, multiplier applied to the *defender's* simulated army,
+/// indexed by game difficulty (0 Easy .. 4 Impossible) and used ONLY when the defender
+/// is human-owned; an AI-owned defender always uses the 1.25 default.
+///
+/// SS 6A.3 settles the direction of the difficulty word from five tables that must all
+/// agree, the decisive one being the flat movement grant every AI hero receives on
+/// Expert and Impossible (0x4E4B58) - a bonus with no reading other than "cheat".
 inline constexpr double AI_ENEMY_STRENGTH_MULTIPLIER[5] = { 0.5, 0.5, 1.0, 1.25, 1.25 };
 
-/// SS 4.11 - 0x6604F8 / 0x6604FC. Both are 0.5 in the stock build; the AI adds
-/// attackBonus * defenderArmyValue on top of the XP reward when the target is owned.
-inline constexpr float ATTACK_COMPUTER_BONUS = 0.5f;
-inline constexpr float ATTACK_HUMAN_BONUS = 0.5f;
+/// SS 4G.1 - 0x6604F8 / 0x6604FC.  These are NOT constants: advManager::AI_prepare
+/// (0x527960) recomputes both from the difficulty every turn.  The 0.5/0.5 pair that
+/// sits in the image is only what difficulty 1 happens to produce.
+///
+///   difficulty 0 (Easy):  computer +1.00, human -0.40
+///   otherwise:            human = (d + 1) * 0.25,  computer = 0.75 - d * 0.25
+///
+/// Read as a handicap, not a cheat: the number inflates how the AI rates the armies of
+/// the player it names, so a large computer bonus makes the AI overrate itself and pick
+/// fights it loses.  That is why the largest value sits on Easy.
+inline constexpr float ATTACK_BONUS_EASY_COMPUTER = 1.00f;
+inline constexpr float ATTACK_BONUS_EASY_HUMAN = -0.40f;
+inline constexpr float ATTACK_BONUS_STEP = 0.25f;
+inline constexpr float ATTACK_BONUS_COMPUTER_BASE = 0.75f;
+
+/// SS 4G.1 - computer side, by difficulty.
+inline constexpr float attackComputerBonus(int difficulty)
+{
+	return difficulty == 0
+		? ATTACK_BONUS_EASY_COMPUTER
+		: ATTACK_BONUS_COMPUTER_BASE - difficulty * ATTACK_BONUS_STEP;
+}
+
+/// SS 4G.1 - human side, by difficulty.
+inline constexpr float attackHumanBonus(int difficulty)
+{
+	return difficulty == 0
+		? ATTACK_BONUS_EASY_HUMAN
+		: (difficulty + 1) * ATTACK_BONUS_STEP;
+}
 
 /// SS 4.9 - 0x63B780 / 0x63B788 / 0x63B790 / 0x63B794
 inline constexpr double MORALE_GOOD = 0.0173;
@@ -185,17 +216,77 @@ inline constexpr int MYSTICAL_GARDEN_GOLD = 500;
 inline constexpr int MYSTICAL_GARDEN_GEMS = 5;
 inline constexpr int PRISON_XP_GOLD = 2500;
 inline constexpr int SCHOOL_OF_MAGIC_COST = 1000;
+
+/// SS 4.8a - 0x52B790: the School of War refuses to be valued below this much gold.
+inline constexpr int SCHOOL_OF_WAR_COST = 1000;
 inline constexpr int TREE_OF_KNOWLEDGE_GOLD_COST = 1000;
 inline constexpr int UNIVERSITY_GEMS_COST = 10;
 inline constexpr int UNIVERSITY_GOLD_COST = 2000;
 inline constexpr int UNIVERSITY_DIVISOR = 3;
 inline constexpr int STABLES_MOVEMENT = 400;
 inline constexpr int OASIS_MOVEMENT = 400;
+inline constexpr int RALLY_FLAG_MOVEMENT = 200;
+inline constexpr int WATERING_HOLE_MOVEMENT = 200;
+
+/// SS 4.8a - the flat value a movement-granting object returns when its grant covers the
+/// whole remaining approach cost, i.e. "this object is free to reach".  The original's
+/// `int* limit` argument is the movement cost of reaching the object, not a bound.
+inline constexpr int MOVEMENT_GRANT_SENTINEL = 10000;
+
+/// SS 4.8a - 0x52AAC0: what the Stables movement grant is worth when the hero could
+/// have made the trip anyway.
+inline constexpr int STABLES_SMALL_VALUE = 50;
+/// SS 4.8a - the x1.2 the Stables applies when the hero already fields Champions.
+inline constexpr double STABLES_MERGE_BONUS = 1.2;
+/// SS 4.8a - creature ids the Stables arm names directly (CRTRAITS.TXT order).
+inline constexpr int STABLES_CAVALIER = 10;
+inline constexpr int STABLES_CHAMPION = 11;
+
+/// SS 4.8a - 0x52A960: Sirens keep 70 % of every stack of more than one.
+inline constexpr float SIRENS_KEEP_FRACTION = 0.7f;
+
+/// SS 4.8a - 0x52A8C0: the Spell Scroll's floor, added again on top of a guard fight.
+inline constexpr int SPELL_SCROLL_FLOOR = 10;
+
+/// SS 4.8 - the gold each war machine costs at the War Machine Factory.
+inline constexpr int WAR_MACHINE_COST = 1000;
+
+/// SS 4.8a - g_hillFortDiscount, floats at 0x63EB4C, indexed by creature level - 1.
+/// The gold half of an upgrade cost is scaled by this; levels 5-7 pay in full.
+inline constexpr float HILL_FORT_GOLD_DISCOUNT[7] = { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f, 1.0f, 1.0f };
+
+/// SS 4.8a - 0x432220 is called with radius 20 for the Redwood Observatory and the
+/// Pillar of Fire, and with radius 10 for the Eye of the Magi sweep (SS 4G.3).
+inline constexpr int SCOUTING_RADIUS = 20;
+
+/// SS 5D.3 - the artifacts hero::creature_speed_bonus (0x4E5AA0) and
+/// hero::creature_hp_bonus (0x4E5B80) name by raw id, checked against ARTRAITS.TXT.
+inline constexpr int ART_RING_OF_THE_WAYFARER = 69;
+inline constexpr int ART_RING_OF_VITALITY = 94;
+inline constexpr int ART_RING_OF_LIFE = 95;
+inline constexpr int ART_VIAL_OF_LIFEBLOOD = 96;
+inline constexpr int ART_NECKLACE_OF_SWIFTNESS = 97;
+inline constexpr int ART_CAPE_OF_VELOCITY = 99;
+inline constexpr int ART_ELIXIR_OF_LIFE = 131;
+
+/// SS 4.12 - the First Aid arm returns this flat value once its Tent gate passes.
+/// SS 5D.3 - g_learning_factor, indexed by Learning secondary-skill level, used by
+/// hero::xp_reward_factor (0x4E4840) as `1.0 + factor`.
+inline constexpr float LEARNING_XP_FACTOR[4] = { 0.00f, 0.05f, 0.10f, 0.15f };
+
+inline constexpr int FIRST_AID_SKILL_VALUE = 250;
+/// SS 4.12 - a hero may hold eight secondary skills; the ranking rule counts free slots.
+inline constexpr int MAX_SECONDARY_SKILLS = 8;
 inline constexpr int LIBRARY_LEVEL_REQUIREMENT = 10;
 inline constexpr int LIBRARY_ARMY_DIVISOR = 10;
 inline constexpr int BACKPACK_FULL = 64;
 
 /// SS 4.8 - the artifact pickup sub-switch (jump table 0x529670).
+/// SS 4G.1 - AI_prepare's average-artifact loop runs artifact ids 7..143.  Ids 0..6
+/// (spellbook, spell scroll, the Grail and the four war machines) are excluded outright.
+inline constexpr int AI_PREPARE_FIRST_ARTIFACT = 7;
+inline constexpr int AI_PREPARE_LAST_ARTIFACT = 143;
+
 inline constexpr int ARTIFACT_MIN_VALUE = 10;
 inline constexpr int ARTIFACT_PAY_GOLD_1 = 2000;
 inline constexpr int ARTIFACT_PAY_GOLD_4 = 2500;

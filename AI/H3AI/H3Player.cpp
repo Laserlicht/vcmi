@@ -19,6 +19,7 @@
 #include "../../lib/callback/CCallback.h"
 #include "../../lib/entities/building/CBuilding.h"
 #include "../../lib/entities/faction/CTown.h"
+#include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/mapObjects/CGTownInstance.h"
 #include "../../lib/mapObjects/IOwnableObject.h"
 
@@ -102,8 +103,20 @@ void H3Player::beginTurn()
 	//   compute_wants                       (SS 4A.1)
 	//   AI_update_grail_guess               (SS 4.14)
 	//
-	// TODO: 0x4B8AF0, 0x429910, 0x4280E0 and 0x429AD0 are named in the report but
-	// their bodies are never given, so only the two specified steps run here.
+	// SS 4G.3 - type_AI_player::begin_turn @ 0x4297C0, in full:
+	//   1. clear hero + 0x43 ("destination reachable") and + 0x11C ("done this turn") on
+	//      every field hero AND every garrisoned hero;
+	//   2. recompute_all_player_income (0x4B8AF0) - rebuilds playerData->income[7] from
+	//      scratch for every player, walking every town on the map;
+	//   3. the Eye-of-the-Magi value (0x429910): the sum of scouting_value(radius 10)
+	//      over every Eye of the Magi (object 27) on the map, skipped on Easy or while
+	//      townless.  It is the Hut of the Magi (object 37) that consumes it;
+	//   4. the two kingdom-goal passes (0x4280E0) - see manageKingdom;
+	//   5. compute_weekly_recruitment_cost (0x429AD0): for every town, the cost of a full
+	//      week of recruitment across all 14 dwelling slots.  That total is what the
+	//      supply / threat model treats as already-committed spending;
+	//   6. compute_wants, then the Grail estimate.
+	// Steps 1 and 4 are engine-side bookkeeping VCMI has no equivalent for.
 	computeResourceSupplyAndThreats();
 	computeWants();
 
@@ -137,11 +150,13 @@ void H3Player::computeWants()
 		{
 			BuildingID building(b);
 
-			// SS 4A.1 uses town::get_buildable_mask (0x5C0F20).
-			// TODO: the report does not say whether that mask includes buildings the
-			// player cannot currently afford.  Both readings are plausible; the
-			// affordable-or-not reading is used here because a building we cannot pay
-			// for is precisely what creates demand.
+			// SS 4A.1 / SS 4A.4a - town::get_buildable_mask (0x5C0F20) contains NO
+			// resource test at all: it filters on prerequisites, already-built, the map's
+			// per-town allow-list, whether a Grail has been dug here, and one campaign
+			// flag.  Unaffordable buildings ARE included, deliberately - the value the AI
+			// computes for one it cannot yet pay for is what drives reserve_funds and,
+			// through it, the trade planner.  Filtering by affordability would stop the AI
+			// ever saving up, so NO_RESOURCES is accepted below.
 			EBuildingState status = cb->canBuildStructure(town, building);
 
 			if(status != EBuildingState::ALLOWED && status != EBuildingState::NO_RESOURCES)
@@ -241,11 +256,16 @@ void H3Player::computeWants()
 	// SS 4A.1 - playerData->d[0x160] = ftol(sum of the six non-gold values) / 5
 	avgResourceValue = static_cast<int>(nonGoldSum) / 5;
 
-	// SS 2 - playerData + 0x164, the average artifact value.
-	// TODO: the report lists this field and names its consumers (Pandora's Box,
-	// creature banks, Corpse, Sea Chest, Treasure Chest) but never gives the routine
-	// that computes it.  Left at zero so the omission is visible rather than guessed.
-	avgArtifactValue = 0;
+	// SS 2 / SS 4G.1 - playerData + 0x164 is produced by advManager::AI_prepare
+	// (0x527960), once per AI turn, as the MEAN of AI_get_value_of_artifact over every
+	// artifact whose traits byte + 0x1C is zero - i.e. the average artifact on this map,
+	// priced against this player's best-placed hero.  It therefore tracks the heroes as
+	// they grow.  Consumers: Pandora's Box, creature banks, Corpse, Sea Chest, Treasure
+	// Chest.
+	// It is AI_prepare that writes it, once per turn, not compute_wants; the turn driver
+	// calls setAverageArtifactValue because only it holds an H3Context.
+	// Left untouched here so a turn's value is not clobbered mid-turn.
+
 }
 
 void H3Player::computeResourceSupplyAndThreats()
@@ -298,19 +318,23 @@ void H3Player::computeResourceSupplyAndThreats()
 
 		if(difficulty != 0)
 		{
-			// SS 4A.5 tests traits[ct].level == 6.  The surrounding prose in SS 4A.4
-			// calls it "a level-6/7 creature".
-			// TODO: the report does not say whether the traits level field is 0- or
-			// 1-based, so the two readings differ by one tier.  The literal comparison
-			// against 6 is reproduced against VCMI's 1-based level.
-			if(creature->getLevel() == 6)
+			// SS 4A.5 / SS 4G.6 - traits + 0x04 is 0-BASED: the original's test is
+			// "== 6", and what it excludes is level-7 creatures.  VCMI's getLevel() is
+			// 1-based, so the faithful comparison is against 7.
+			if(creature->getLevel() == 7)
 				flagged = true;
 
-			// SS 4A.5 also flags a creature when
-			//   traits[ct].growth * traits[ct].AI_value + ourTotal > enemyBest
-			// TODO: the report defines neither `ourTotal` nor `enemyBest` beyond
-			// "over all players on other teams, find the strongest dwelling portfolio",
-			// so this third test cannot be reproduced.
+			// SS 4A.5 / SS 4G.6 - the two quantities are DWELLING STOCK, not army
+			// strength:
+			//   bestRivalStock = max, over every player NOT on our team, of
+			//                    sum over their towns, over all 14 dwelling slots, of
+			//                    (creatures available * traits[creature].AI_value)
+			//   ourStock       = the same sum for us
+			// and the test is
+			//   traits[ct].weeklyGrowth * traits[ct].AI_value + ourStock > bestRivalStock
+			// Both are computed ONLY when the difficulty word is 0 (Easy) and no human
+			// shares our team; on every other setting tests 2 and 3 never run at all -
+			// which is why this whole block sits under `difficulty != 0` being false.
 		}
 
 		creatureThreatFlags[creature->getId()] = flagged;
@@ -322,6 +346,16 @@ bool H3Player::creatureFlagged(const CreatureID & creature) const
 	auto it = creatureThreatFlags.find(creature);
 
 	return it != creatureThreatFlags.end() && it->second;
+}
+
+/// SS 4B.4a - playerData::AnyHeroHasArtifact @ 0x4BACB0
+bool H3Player::anyHeroHasArtifact(const ArtifactID & artifact) const
+{
+	for(const CGHeroInstance * hero : cb->getHeroesInfo())
+		if(hero != nullptr && hero->hasArt(artifact))
+			return true;
+
+	return false;
 }
 
 int H3Player::resourceCost(const ResourceSet & resources) const
@@ -370,10 +404,14 @@ bool H3Player::planTrades(const ResourceSet & cost) const
 			surplusValue += static_cast<int64_t>(surplus * resourceValues[i]);
 	}
 
-	// TODO: AI_plan_trades / AI_do_trades also *perform* the trade through a
-	// marketplace, and get_total_value calls them before scoring.  The report does not
-	// specify how the market or the exchange rate is chosen, so this reimplementation
-	// only answers "could the deficit be covered", and never commits a trade.
+	// SS 4G.7 - the trade machinery is four routines, and the last one commits:
+	//   0x42A2B0  can the deficit be covered?
+	//   0x42A580  choose which resource to sell, and at what rate
+	//   0x42AB40  re-validate the plan once built
+	//   0x42AC20  EXECUTE the trades
+	// The same entry point both prices a purchase and pays for it, which is why
+	// AI_build_one_building reaches it through reserve_funds.  An AI cannot commit a
+	// market trade in VCMI without a callback, so this answers only the first question.
 	return surplusValue >= deficitValue;
 }
 
@@ -404,8 +442,11 @@ int H3Player::getTotalValue(int base, const ResourceSet & cost) const
 
 	if(c == 0)
 	{
-		// TODO: the original divides unconditionally here.  A free building would trap;
-		// the report does not say what the intended result is, so it is guarded.
+		// SS 4G.8 - there is no division to guard in the original.  get_total_value first
+		// asks whether any component of the cost exceeds what we hold AND has zero income;
+		// if not, it takes a plain path that never divides by the cost.  A zero cost
+		// vector makes that test false, so the trap cannot arise.  The guard is kept only
+		// because this reimplementation reaches the division by a shorter route.
 		return base > 0 ? std::numeric_limits<int>::max() : 0;
 	}
 
@@ -414,11 +455,12 @@ int H3Player::getTotalValue(int base, const ResourceSet & cost) const
 
 void H3Player::reserveFunds(const ResourceSet & cost, int multiplier)
 {
-	// SS 4A.4 / SS 4B.4 - type_AI_player::reserve_funds @ 0x42A470.
-	// TODO: the report names this routine and both of its call shapes
-	// (reserve_funds(cost, true) when building, reserve_funds(cost, offer.available)
-	// when recruiting) but never gives its body.  The obvious reading - accumulate
-	// cost * multiplier into reserved_funds - is used here.
+	// SS 4A.4 / SS 4B.4 / SS 4G.7 - type_AI_player::reserve_funds @ 0x42A470 is the trade
+	// driver: feasibility (0x42A2B0), then plan (0x42A580), then re-validate (0x42AB40),
+	// then commit (0x42AC20).  The `commit` flag is the fourth argument, threaded through
+	// from AI_build_one_building; the two call shapes are reserve_funds(cost, true) when
+	// building and reserve_funds(cost, offer.available) when recruiting.  Only the
+	// accumulation into reserved_funds is reproducible here - see planTrades above.
 	for(int i = 0; i < GameConstants::RESOURCE_QUANTITY; ++i)
 		reservedFunds[i] += cost[GameResID(i)] * multiplier;
 }
@@ -426,17 +468,23 @@ void H3Player::reserveFunds(const ResourceSet & cost, int multiplier)
 float H3Player::getAttackBonus(PlayerColor targetOwner) const
 {
 	// SS 4.11 - type_AI_player::get_attack_bonus @ 0x428710:
-	//   0.0 for an unowned target, 0.5 (0x6604F8 / 0x6604FC) for both computer- and
-	//   human-owned targets in the stock build.
+	//   0.0 for an unowned target, else the human or computer bonus.
+	//
+	// SS 4G.1: those two globals are NOT the 0.5/0.5 pair sitting in the image - they
+	// are recomputed from the difficulty by advManager::AI_prepare (0x527960) at the
+	// start of every AI turn.  Reading them as constants made the AI behave as if every
+	// game were on difficulty 1.
 	if(!targetOwner.isValidPlayer())
 		return 0.0f;
+
+	const int difficulty = static_cast<int>(cb->getStartInfo()->difficulty);
 
 	const PlayerState * state = cb->getPlayerState(targetOwner, false);
 
 	if(state != nullptr && state->human)
-		return ATTACK_HUMAN_BONUS;
+		return attackHumanBonus(difficulty);
 
-	return ATTACK_COMPUTER_BONUS;
+	return attackComputerBonus(difficulty);
 }
 
 }

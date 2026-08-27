@@ -87,11 +87,14 @@ int lowestSetBit(uint32_t mask)
 	return -1;
 }
 
-/// SS 4B.4 - armyGroup::count_alignments @ 0x44AE60
-/// TODO: the report names this routine and shows how its result is used
-/// (count_alignments(dst, mode) + morale < maxAlign) but never gives its body.  It is
-/// implemented here as "how many distinct alignments the group already holds", counting
-/// only the creatures that are not alignment-free (SS 4E.2 bit 17).
+/// SS 4B.4a - armyGroup::count_alignments @ 0x44ABB0:
+///   for each of the 7 slots, skip an empty one and any creature whose traits flag
+///   0x40 is set ("exempt from alignment penalties"); the four base elementals map to
+///   bucket -1 when gpGame->d[0x1F698] is 0; count how many of the 10 buckets are
+///   occupied.  The -1 bucket DOES count as an alignment - a mixed army of neutrals
+///   and elementals scores 1, not 0.
+///   0x44AE60, which NH3API's symbol list points at for this name, is the consumer:
+///   it calls this and hero::get_morale and turns the buckets into a morale modifier.
 int countAlignments(const ArmyGroup & group, bool /*mode*/)
 {
 	uint32_t mask = 0;
@@ -106,7 +109,8 @@ int countAlignments(const ArmyGroup & group, bool /*mode*/)
 		if(isAlignmentFree(creature))
 			continue;
 
-		const int align = alignmentOf(group.type[i]);
+		// ++c[a + 1] - alignment -1 (neutrals / base elementals) lands in bucket 0
+		const int align = alignmentOf(group.type[i]) + 1;
 
 		if(align >= 0 && align < 32)
 			mask |= 1u << align;
@@ -136,11 +140,13 @@ int64_t creatureAIValue(const CreatureID & creature)
 }
 
 /// SS 4.13 / SS 4B.4 - hero::get_morale(hero, 0, 0, 1) @ 0x4E39B0.
-/// TODO: the report never expands get_morale; VCMI's own morale bonus total is used.
+/// SS 4.9 - hero::get_morale is now written out; H3Valuations::currentMorale is the
+/// clamped form every AI call site of the original uses.
 int heroMoraleOf(const CGHeroInstance * hero)
 {
-	return hero != nullptr ? hero->valOfBonuses(BonusType::MORALE) : 0;
+	return hero != nullptr ? currentMorale(hero) : 0;
 }
+
 }
 
 int movementForSpeed(CCallback * cb, int speed)
@@ -306,11 +312,9 @@ void ArmyPlanner::writeback(ArmyGroup & group)
 	for(int i = 0; i < GameConstants::ARMY_SIZE; ++i)
 		group.removeSlot(i);
 
-	// 2. sort.  The report records only that the key record carries traits[type].speed;
-	// the comparator itself is the inlined MSVC std::sort idiom.
-	// TODO: the report does not state the comparison direction.  Ascending by speed is
-	// used, which is what makes the two opposite-direction passes of step 3 place fast
-	// shooters and slow walkers at opposite ends.
+	// 2. sort.  The key record carries traits[type].speed; the comparator itself is the
+	// inlined MSVC std::sort idiom.  SS 4B.4 - it is ascending, which is what makes the
+	// two opposite-direction passes of step 3 place shooters and walkers at opposite ends.
 	std::sort(sorted.begin(), sorted.end(), [](const Record & a, const Record & b) { return a.speed < b.speed; });
 
 	const int n = static_cast<int>(sorted.size());
@@ -404,9 +408,10 @@ void ArmyPlanner::normalise()
 			return;
 
 		// SS 4B.4: "value_of_adding (0x42C830) decides; armyGroup::remove_slot commits".
-		// TODO: the report does not give the exact predicate normalise applies to the
-		// value_of_adding result.  A stack whose re-addition would be worthless (<= 0)
-		// is the only reading consistent with "stacks the destination should not keep".
+		// SS 4B.4a - the predicate is strictly "> 0 to keep": value_of_adding == 0 means
+		// give the stack back.  The stack is removed from the destination BEFORE the
+		// evaluation, which makes the question "is this stack worth having at all?"
+		// rather than "is it worth adding on top of itself?".
 		int outSlot = -1;
 		const CreatureID creature = destination->type[i];
 		const int amount = destination->count[i];

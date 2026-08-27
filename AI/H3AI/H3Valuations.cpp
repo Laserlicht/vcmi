@@ -10,11 +10,17 @@
 #include "StdInc.h"
 #include "H3Valuations.h"
 
+#include "H3SpellValue.h"
+#include "H3SpellData.h"
+
 #include "../../lib/CCreatureHandler.h"
 #include "../../lib/GameLibrary.h"
 #include "../../lib/entities/hero/CHeroHandler.h"
 #include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/mapObjects/army/CCreatureSet.h"
+#include "../../lib/spells/CSpell.h"
+
+#include <algorithm>
 
 namespace H3AI
 {
@@ -133,6 +139,10 @@ HeroValuations computeHeroValuations(const CGHeroInstance * hero)
 	//
 	//   hero->xpValue = (2500.0f + armyGroup::get_AI_value(&hero->army))
 	//                 / (float)(40 * experience_for_level(hero->level));
+	//
+	// SS 4.9: experience_for_level (0x4DA420) computes n = level + 1 and indexes from
+	// there, so it returns what the NEXT level costs and is positive even at level 0.
+	// The original needs no guard and neither does this.
 	const int64_t denominator = XP_VALUATION_LEVEL_DIVISOR * experienceForLevel(hero->level);
 
 	if(denominator > 0)
@@ -140,26 +150,60 @@ HeroValuations computeHeroValuations(const CGHeroInstance * hero)
 		out.experienceValue = static_cast<float>(XP_VALUATION_BASE + armyAIValue(hero))
 			/ static_cast<float>(denominator);
 	}
-	else
+
+	// SS 4.9b - the five counterfactual probes of type_spellvalue.  Each one mutates a
+	// field, re-runs get_best_spell_value over all six categories, and takes the
+	// difference against the unmodified baseline.
+	H3SpellValue sv(hero);
+
+	if(!sv.valid())
 	{
-		// TODO: the report does not say what the original does at level 0, where
-		// experience_for_level returns 0 and the division would trap.  Guarded here.
-		out.experienceValue = 0.0f;
+		// No spell book, or the Orb of Inhibition: every probe collapses onto the floor
+		// the original applies to two of the five fields.
+		out.valueOfSpellPower = 10;
+		out.valueOfKnowledge = 10;
+		return out;
 	}
 
-	// SS 4.9 - the same function computes the three "value of +1 stat" fields through
-	// type_spellvalue::get_best_spell_value, evaluated at the current stats and again
-	// at +1.  The only fact the report states about the result is that hero + 0x47E is
-	// floored at 10.
-	//
-	// TODO: get_best_spell_value / type_spellvalue is not specified anywhere in the
-	// report, so the counterfactual spellbook re-pricing cannot be reproduced.  Until
-	// it is, all three fields collapse onto the documented floor, which makes the AI
-	// undervalue Star Axis, Garden of Revelation, Library of Enlightenment, School of
-	// Magic and the Tower/Inferno town specials.
-	out.valueOfSpellPower = 10;
-	out.valueOfKnowledge = 10;
-	out.valueOfOther = 10;
+	const int base = sv.bestSpellValue(H3_SPELL_ALL_CATEGORIES);
+
+	// +1 spell power also advances duration, exactly as in the original.
+	sv.spellPower += 1;
+	sv.duration += 1;
+	out.valueOfSpellPower = std::max(10, sv.bestSpellValue(H3_SPELL_ALL_CATEGORIES) - base);
+	sv.spellPower -= 1;
+	sv.duration -= 1;
+
+	// +1 duration alone.  Not floored.
+	sv.duration += 1;
+	out.valueOfSpellDuration = sv.bestSpellValue(H3_SPELL_ALL_CATEGORIES) - base;
+	sv.duration -= 1;
+
+	// +30 mana is three points of knowledge, so the result is divided by three.
+	sv.mana += 30;
+	out.valueOfKnowledge = std::max(10, (sv.bestSpellValue(H3_SPELL_ALL_CATEGORIES) - base) / 3);
+	sv.mana -= 30;
+
+	// The two mana-refill numbers the Magic Well and Magic Spring handlers return.
+	const int maxMana = sv.mana;
+	const int currentMana = hero->mana;
+
+	sv.mana = currentMana;
+	const int atCurrent = sv.bestSpellValue(H3_SPELL_ALL_CATEGORIES);
+
+	if(currentMana < maxMana)
+	{
+		sv.mana = maxMana;
+		out.valueOfFullMana = sv.bestSpellValue(H3_SPELL_ALL_CATEGORIES) - atCurrent;
+	}
+
+	if(currentMana < 2 * maxMana)
+	{
+		sv.mana = 2 * maxMana;
+		out.valueOfDoubleMana = sv.bestSpellValue(H3_SPELL_ALL_CATEGORIES) - atCurrent;
+	}
+
+	sv.mana = maxMana;
 
 	return out;
 }
@@ -202,6 +246,98 @@ bool isFlying(const CCreature * creature)
 {
 	// SS 4E.2 - traits + 0x10 bit 1: flying.
 	return creature != nullptr && creature->hasBonusOfType(BonusType::FLYING);
+}
+
+
+bool isLiving(const CCreature * creature)
+{
+	// SS 4E.2 - traits + 0x10 bit 4.  VCMI expresses the same set as "not undead, not a
+	// golem-class construct, not a siege engine".
+	return creature != nullptr
+		&& !creature->hasBonusOfType(BonusType::UNDEAD)
+		&& !creature->hasBonusOfType(BonusType::NON_LIVING)
+		&& !creature->hasBonusOfType(BonusType::SIEGE_WEAPON);
+}
+
+int currentMorale(const CGHeroInstance * hero)
+{
+	// SS 4.9 - hero::get_morale @ 0x4E39B0.  The original sums the Leadership table
+	// {0,1,2,3}, the specialty scaling, five artifacts, a Castle-faction Grail, the
+	// accumulated terrain/event modifier at hero + 0x11A, and clamps to [-3, +3].
+	// VCMI keeps every one of those as a MORALE bonus, so the total is already correct.
+	if(hero == nullptr)
+		return 0;
+
+	return std::clamp(hero->valOfBonuses(BonusType::MORALE), -3, 3);
+}
+
+int currentLuck(const CGHeroInstance * hero)
+{
+	// SS 4.9 - hero::get_luck @ 0x4E36C0, the same shape with the Luck table and its
+	// own artifact list, no Grail term, and hero + 0x11B as the accumulator.
+	if(hero == nullptr)
+		return 0;
+
+	return std::clamp(hero->valOfBonuses(BonusType::LUCK), -3, 3);
+}
+
+double necromancyFraction(const CGHeroInstance * hero)
+{
+	// SS 4.9a - hero::necromancy_fraction @ 0x4E3CD0: g_SSNecromancyFactor[skill]
+	// {0.00, 0.10, 0.20, 0.30}, scaled by 1 + 0.05*level for a Necromancy specialist,
+	// plus the artifact contributions.  VCMI folds all of that into one bonus.
+	if(hero == nullptr)
+		return 0.0;
+
+	return static_cast<double>(hero->valOfBonuses(BonusType::UNDEAD_RAISE_PERCENTAGE)) / 100.0;
+}
+
+double firstAidAmount(const CGHeroInstance * hero)
+{
+	// SS 4.9a - hero::first_aid_amount @ 0x4E4920: g_firstaid_factor[skill]
+	// {0.0, 1.0, 2.0, 3.0}, scaled by 1 + 0.05*level for a First Aid specialist, +1.0.
+	if(hero == nullptr)
+		return 1.0;
+
+	static const double FACTOR[4] = { 0.0, 1.0, 2.0, 3.0 };
+	const int skill = std::clamp(static_cast<int>(hero->getSecSkillLevel(SecondarySkill::FIRST_AID)), 0, 3);
+
+	// The original also scales by (1 + 0.05 * level) when the hero is a First Aid
+	// specialist (g_heroSpecialty[hero].type == 0 && param == 27).  That branch is left
+	// out rather than guessed at: VCMI expresses specialties as bonuses and the exact
+	// equivalent is unconfirmed.  Omitting a refinement that applies to a handful of
+	// heroes is better than shipping a wrong one.
+	return FACTOR[skill] + 1.0;
+}
+
+bool spellInSchoolMask(const SpellID & spell, int mask)
+{
+	// SS 4.9a - 1 Air, 2 Fire, 4 Water, 8 Earth, fixed by Tome of Fire -> TOME(2) and
+	// Orb of Tempestuous Fire -> SCHOOL(2, 100).
+	const CSpell * data = spell.toSpell();
+
+	if(data == nullptr)
+		return false;
+
+	bool hit = false;
+
+	data->forEachSchool([&](const SpellSchool & school, bool & stop)
+	{
+		int bit = 0;
+
+		if(school == SpellSchool::AIR)        bit = 1;
+		else if(school == SpellSchool::FIRE)  bit = 2;
+		else if(school == SpellSchool::WATER) bit = 4;
+		else if(school == SpellSchool::EARTH) bit = 8;
+
+		if((bit & mask) != 0)
+		{
+			hit = true;
+			stop = true;
+		}
+	});
+
+	return hit;
 }
 
 }

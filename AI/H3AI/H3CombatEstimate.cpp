@@ -73,18 +73,39 @@ CombatData::CombatData(
 		? ourHero->getPrimSkillLevel(PrimarySkill::SPELL_POWER) / 5.0
 		: 0.2;
 
-	// SS 5B.1 - speedBonus = ourHero ? 0x4E5AA0(ourHero) : 0.
-	// TODO: 0x4E5AA0 is never expanded in the report.  It is plainly a per-hero
-	// creature-speed bonus (artifacts / specialty), but its body is unknown, so it
-	// contributes nothing here.
-	const int speedBonus = 0;
+	// SS 5D.3 - hero::creature_speed_bonus @ 0x4E5AA0:
+	//   +1 Necklace of Swiftness (97), +1 Ring of the Wayfarer (69),
+	//   +2 Cape of Velocity (99), +2 for a speed-specialist hero,
+	// each tested as "worn, or the assembled set containing it".
+	int speedBonus = 0;
 
-	// SS 5B.2 - the two siege parameters.
-	// TODO: the report names wall_speed_limit and wall_archery_penalty but never gives
-	// their values or how they are derived from the defending town.  Neutral values are
-	// used, which makes sieges simulate as open-field battles.
-	const int wallSpeedLimit = 0;
-	const bool wallArcheryPenalty = false;
+	if(ourHero != nullptr)
+	{
+		if(ourHero->hasArt(ArtifactID(ART_NECKLACE_OF_SWIFTNESS), false, true)) speedBonus += 1;
+		if(ourHero->hasArt(ArtifactID(ART_RING_OF_THE_WAYFARER), false, true))  speedBonus += 1;
+		if(ourHero->hasArt(ArtifactID(ART_CAPE_OF_VELOCITY), false, true))      speedBonus += 2;
+		// The +2 speed specialty is a hero-specialty lookup VCMI models as a bonus;
+		// left out rather than guessed (same reasoning as firstAidAmount, SS 4.9a).
+	}
+
+	// SS 5B.2 - the two siege parameters, set by 0x424790 from the defending town:
+	//   no fortification -> 0, Fort -> 4, Citadel -> 5, Castle -> 6,
+	// and the archery penalty is simply "the town has any of the three".
+	//
+	// Every adventure-side caller of the original's constructor passes NO town, so for
+	// the adventure AI both are always neutral and a siege estimate is an open-field
+	// estimate.  That is the shipped behaviour, not a simplification.
+	int wallSpeedLimit = 0;
+	bool wallArcheryPenalty = false;
+
+	if(theirTown != nullptr)
+	{
+		if(theirTown->hasBuilt(BuildingID::CASTLE))       wallSpeedLimit = 6;
+		else if(theirTown->hasBuilt(BuildingID::CITADEL)) wallSpeedLimit = 5;
+		else if(theirTown->hasBuilt(BuildingID::FORT))    wallSpeedLimit = 4;
+
+		wallArcheryPenalty = wallSpeedLimit > 0;
+	}
 
 	// ---- SS 5B.2 per-stack type_monster_data -------------------------------------
 	int index = 0;
@@ -106,8 +127,19 @@ CombatData::CombatData(
 			const double baseHp = creature->getBaseHitPoints();
 			double hp = baseHp;
 
-			// SS 5B.2 - if (ourHero) hp += hero_creature_hp_bonus(ourHero, ct) (0x4E5B80).
-			// TODO: 0x4E5B80 is not expanded in the report; no bonus is applied.
+			// SS 5D.3 - hero::creature_hp_bonus @ 0x4E5B80:
+			//   +1 Ring of Vitality (94), +1 Ring of Life (95),
+			//   +2 Vial of Lifeblood (96), and for a LIVING creature
+			//   + maxHealth / 4 with the Elixir of Life (131).
+			if(ourHero != nullptr)
+			{
+				if(ourHero->hasArt(ArtifactID(ART_RING_OF_VITALITY), false, true))  hp += 1.0;
+				if(ourHero->hasArt(ArtifactID(ART_RING_OF_LIFE), false, true))      hp += 1.0;
+				if(ourHero->hasArt(ArtifactID(ART_VIAL_OF_LIFEBLOOD), false, true)) hp += 2.0;
+
+				if(isLiving(creature) && ourHero->hasArt(ArtifactID(ART_ELIXIR_OF_LIFE), false, true))
+					hp += static_cast<double>(creature->getMaxHealth()) / 4.0;
+			}
 
 			md.speed = creature->getBaseSpeed() + speedBonus;
 			md.value = static_cast<int>(std::sqrt(hp / baseHp) * creature->getFightValue() * modifier);
@@ -313,7 +345,9 @@ void CombatData::simulateCombat(CombatData & defender)
 		(void)getFastestSpeed();
 		(void)defender.getFastestSpeed();
 
-		// SS 5B.3 - the exchange itself.
+		// SS 5B.3 - the exchange itself.  SS 5D.4 settles the ownership question the
+		// comment below used to raise: X.get_attack(...) is the damage X DEALS, and it
+		// is subtracted from the OTHER side.
 		// The report states the two cases as:
 		//   both melee:      each side takes get_attack(4, true) from the other
 		//   one side ranged: the ranged side takes get_attack(round, false),
@@ -366,9 +400,14 @@ int valueOfCombat(
 
 	const VictoryConditionInfo victory = getVictoryConditionInfo(cb);
 
-	// SS 4.11 - double atkMod = (double)attacker->f[0x47A];
-	// TODO: hero + 0x47A ("this hero's combat-strength modifier") is listed in SS 2 but
-	// the report never says how it is computed.  1.0 is the neutral value.
+	// SS 4.11 / SS 5D.1 - hero + 0x47A is a RANDOM per-hero multiplier, drawn once when
+	// the hero record is created:
+	//   base = rand(75, 100) * heroClass.f[0x08];   modifier = base / rand(100, 125)
+	// i.e. roughly classFactor * U[0.6, 1.0], fixed for that hero's lifetime.  Two heroes
+	// of the same class therefore price the same fight slightly differently, and always
+	// will.  VCMI has no equivalent field and cannot recover the draw, so 1.0 is used;
+	// the consequence is that every AI hero here rates a given fight identically, where
+	// the original spreads them over roughly a 0.6..1.0 band.
 	double atkMod = 1.0;
 
 	// SS 4C, condition 5 - the hero we must defeat fights us at half our strength.
@@ -411,9 +450,15 @@ int valueOfCombat(
 	const int64_t survivingArmyValue = a.survivingArmyAIValue();
 	const int64_t defenderArmyValue = armyAIValue(defenderArmy);
 
-	// SS 4.11 - float f1 = attacker->AI_something();     // 0x4E4840
-	// TODO: 0x4E4840 is named but never expanded in the report.  1.0 is neutral.
-	const float f1 = 1.0f;
+	// SS 4.11 / SS 5D.3 - hero::xp_reward_factor @ 0x4E4840:
+	//   f = g_learning_factor[Learning skill]        // {0.00, 0.05, 0.10, 0.15}
+	//   if the hero is a Learning SPECIALIST, f *= (1 + 0.05 * level)
+	//   return f + 1.0
+	// so the multiplier is 1.00 / 1.05 / 1.10 / 1.15 by Learning level.  The specialist
+	// term is not applied here: VCMI expresses hero specialties as bonuses rather than a
+	// class id, so there is no faithful equivalent of the original's specialist test.
+	const float f1 = 1.0f + LEARNING_XP_FACTOR[std::clamp(
+		static_cast<int>(attacker->getSecSkillLevel(SecondarySkill::LEARNING)), 0, 3)];
 
 	const int64_t expForNext = experienceForLevel(attacker->level);
 	int64_t xpReward = 0;
@@ -448,10 +493,14 @@ int valueOfCombat(
 			value += VICTORY_CONDITION_OVERRIDE;
 		}
 
-		// SS 4.11 - if (lossCondition == 1 && targetHeroId == defender->id) value += 5'000'000;
-		// TODO: SS 4C.4 states flatly that "the AI never reads the loss condition", which
-		// contradicts this line of SS 4.11.  The loss-condition term is therefore not
-		// reproduced; only the victory-condition term above is applied.
+		// SS 5D.2 - the apparent contradiction with SS 4C.4 is resolved: there is NO
+		// loss-condition term.  The term that looked like one reads the VICTORY record
+		// (gpGame + 0x1F89C) and fires on condition 5, "defeat a specific hero":
+		//   if (victory.condition == DEFEAT_HERO && victory.hero == this hero)
+		//       modifier *= 0.5;
+		// A hero that is itself the enemy's victory target halves its own appetite for
+		// fights.  That term is applied as the atkMod halving above, so nothing is
+		// missing here.  SS 4C.4 was right: the loss condition is never read.
 	}
 
 	return static_cast<int>(std::clamp<int64_t>(value, ABSOLUTE_NO_GO, std::numeric_limits<int>::max()));
