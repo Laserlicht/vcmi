@@ -305,9 +305,51 @@ double CombatData::getFinalMeleeValue() const
 	return total;
 }
 
+void CombatData::applyNecromancy(const CombatData & loser)
+{
+	// SS 5B.3 - do_aftermath @ 0x426EE0 applies necromancy, town-tower fire and the
+	// surviving-army bookkeeping.  The report names the routine without giving its
+	// arithmetic, but the necromancy half is fully specified elsewhere: SS 4.9a gives
+	// hero::necromancy_fraction, and the rule it feeds is H3's own - the winner raises
+	// that share of the hit points it destroyed, as skeletons.
+	necromancyValue = 0;
+
+	if(hero == nullptr)
+		return;
+
+	const double fraction = necromancyFraction(hero);
+
+	if(fraction <= 0.0)
+		return;
+
+	const CCreature * skeleton = CreatureID(CreatureID::SKELETON).toCreature();
+
+	if(skeleton == nullptr || skeleton->getMaxHealth() <= 0)
+		return;
+
+	int64_t hitPointsDestroyed = 0;
+
+	for(const MonsterData & md : loser.stacks)
+	{
+		const CCreature * creature = md.type.toCreature();
+
+		// Only living creatures can be raised - the same trait bit SS 4E.2 names.
+		if(creature == nullptr || !isLiving(creature))
+			continue;
+
+		hitPointsDestroyed += static_cast<int64_t>(creature->getMaxHealth())
+			* std::max(0, md.originalNumber - md.number);
+	}
+
+	const int64_t raised = static_cast<int64_t>(fraction * static_cast<double>(hitPointsDestroyed))
+		/ skeleton->getMaxHealth();
+
+	necromancyValue = raised * skeleton->getAIValue();
+}
+
 int64_t CombatData::survivingArmyAIValue() const
 {
-	int64_t value = 0;
+	int64_t value = necromancyValue;
 
 	for(const MonsterData & md : stacks)
 	{
@@ -330,7 +372,7 @@ void CombatData::simulateCombat(CombatData & defender)
 
 		// SS 5B.3 - bool aMelee = this->choose_melee(def, round);   // 0x4267C0
 		//           bool bMelee = def.choose_melee(*this, round);
-		// TODO: choose_melee (0x4267C0) and do_general_melee (0x4264D0) are named in
+		// GAP: choose_melee (0x4267C0) and do_general_melee (0x4264D0) are named in
 		// SS 4.11 and referenced in SS 5B.3, but neither body is given in the report.
 		// Without them the "is this side forced into melee this round" decision cannot
 		// be reproduced; both sides are treated as melee, which is what the original
@@ -339,9 +381,9 @@ void CombatData::simulateCombat(CombatData & defender)
 		const bool bMelee = true;
 
 		// SS 5B.3 - the side with the faster surviving stack casts first.
-		// TODO: cast_spell (0x425BD0) is the quick-combat spell AI (SS 5B.4).  Its
-		// seven helpers are explicitly left unexpanded by the report, so no spell is
-		// cast here and the simulation is purely a troop exchange.
+		// GAP: cast_spell (0x425BD0) is the quick-combat spell AI (SS 5B.4).  Its seven
+		// helpers are explicitly left unexpanded by the report - battle AI is out of
+		// scope - so no spell is cast here and the simulation is a pure troop exchange.
 		(void)getFastestSpeed();
 		(void)defender.getFastestSpeed();
 
@@ -352,9 +394,9 @@ void CombatData::simulateCombat(CombatData & defender)
 		//   both melee:      each side takes get_attack(4, true) from the other
 		//   one side ranged: the ranged side takes get_attack(round, false),
 		//                    the other get_attack(4, true)
-		// TODO: "takes ... from the other" is ambiguous about which side owns the
-		// get_attack call.  It is read here as "each side *deals* the named attack",
-		// which is the only reading consistent across both cases.
+		// "takes ... from the other" is ambiguous about which side owns the get_attack
+		// call.  It is read as "each side *deals* the named attack", which is the only
+		// reading consistent across both cases.
 		int64_t damageFromUs;
 		int64_t damageFromThem;
 
@@ -381,9 +423,14 @@ void CombatData::simulateCombat(CombatData & defender)
 			break;
 	}
 
-	// SS 5B.3 - do_aftermath @ 0x426EE0 applies necromancy, town-tower fire and the
-	// surviving-army bookkeeping.
-	// TODO: the report names do_aftermath but does not give its arithmetic.
+	// SS 5B.3 - do_aftermath @ 0x426EE0: necromancy, town-tower fire and the
+	// surviving-army bookkeeping.  Necromancy is applied to whichever side is still
+	// standing; town-tower fire only ever applies to a siege, which the simulator does
+	// not model (see the wall constants above).
+	if(totalCombatValue > 0 && defender.totalCombatValue <= 0)
+		applyNecromancy(defender);
+	else if(defender.totalCombatValue > 0 && totalCombatValue <= 0)
+		defender.applyNecromancy(*this);
 }
 
 int valueOfCombat(

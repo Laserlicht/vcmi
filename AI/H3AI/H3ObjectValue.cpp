@@ -11,6 +11,7 @@
 #include "H3ObjectValue.h"
 
 #include "H3ArtifactValue.h"
+#include "H3RewardValue.h"
 #include "H3SpellValue.h"
 
 #include "H3ArmyPlanner.h"
@@ -35,7 +36,10 @@
 #include "../../lib/mapping/TerrainTile.h"
 #include "../../lib/callback/Calendar.h"
 #include "../../lib/mapObjects/CGTownInstance.h"
+#include "../../lib/mapObjects/CGMarket.h"
 #include "../../lib/mapObjects/MiscObjects.h"
+#include "../../lib/mapObjects/Quest.h"
+#include "../../lib/rewardable/Interface.h"
 #include "../../lib/spells/CSpellHandler.h"
 
 #include <algorithm>
@@ -181,7 +185,24 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 			object = ctx.cb->getObjInstance(terrain->visitableObjects.back());
 	}
 
-	if(object == nullptr || hero == nullptr)
+	if(hero == nullptr)
+		return 0;
+
+	// SS 4.14 / SS 4C.3 condition 4 - the Grail dig site.  Nothing stands on the tile
+	// until somebody digs, so it has no object to dispatch on; it is priced here, next to
+	// the Grail override at the bottom of this function, once the obelisks have pinned it
+	// down.  Digging costs the whole turn, which is what zeroing the limit says.
+	if(ctx.player->grailDigSite().isValid() && tile == ctx.player->grailDigSite())
+	{
+		moveLimit = 0;
+
+		if(ctx.victory.condition == H3VictoryCondition::BUILD_GRAIL)
+			return VICTORY_CONDITION_OVERRIDE;
+
+		return artifactValue(ctx, ArtifactID::GRAIL);
+	}
+
+	if(object == nullptr)
 		return 0;
 
 	auto stateIt = ctx.heroStates->find(hero->id);
@@ -230,9 +251,10 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 				+ ctx.player->artifactValue());
 		}
 
-		// TODO: VCMI models the other five pickup conditions as configurable rewards on
-		// CRewardableObject rather than as the H3 cell nibble, so which of the six arms
-		// applies cannot be read back here.  The free-pickup arm is used.
+		// Arms 1-5 have no counterpart in VCMI's data model: a map artifact object carries
+		// a message and an optional guard, and nothing else, so "free" and "guarded" are
+		// the only two states expressible - and both are handled.  The arm that priced a
+		// gold / sulfur / gems toll has nothing to read.
 		return value;
 	}
 
@@ -255,11 +277,12 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 		if(isGuarded(object))
 			value += valueOfCombat(ctx.cb, *ctx.player, hero, nullptr, armyOf(object), nullptr);
 
-		// TODO: VCMI stores Pandora contents as a CRewardableObject reward list whose
-		// visibility to an AI is deliberately limited (the player has not opened the box
-		// yet).  The report assumes the AI can read the contents directly out of the map
-		// object, which VCMI's callback layer does not expose, so only the guard term is
-		// reproduced.
+		// The report assumes the AI reads the contents straight out of the map object.
+		// VCMI holds the same information on the object as a resolved reward list, with
+		// the random roll already baked in at map init, so that is where it is read -
+		// see valueOfReward, which is this handler's arithmetic written out once.
+		value += valueOfObjectRewards(ctx, hero, val, object, moveLimit);
+
 		return static_cast<int>(value);
 	}
 
@@ -272,12 +295,37 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 		// SS 4.8 - sum over the 7 offered artifacts of
 		//   max(0, AI_get_value_of_artifact(art) - price * resource_value[priceResource])
 		// and 0 for any artifact the player cannot afford.
-		// SS 4.9a now supplies AI_get_value_of_artifact.
-		// TODO(VCMI): the seven artifacts a Black Market currently offers and their
-		// prices are server-side state; where a caller can reach them the remaining
-		// term is exactly
-		//   sum over offers of max(0, artifactValueForPlayer(art) - price * resourceValue)
-		return 0;
+		// SS 4.9a now supplies AI_get_value_of_artifact.  The offer list lives on the
+		// object (CGBlackMarket::artifacts) and its prices come from the market itself,
+		// so the whole term is reproducible.
+		const auto * market = dynamic_cast<const CGBlackMarket *>(object);
+
+		if(market == nullptr)
+			return 0;
+
+		int64_t value = 0;
+
+		for(const ArtifactID & offered : market->artifacts)
+		{
+			if(!offered.hasValue())
+				continue;
+
+			int price = 0;
+			int count = 1;
+
+			// getOffer answers "how much of id1 buys val2 of id2"; for RESOURCE_ARTIFACT
+			// id1 is the resource paid, which for a Black Market is always gold.
+			if(!market->getOffer(GameResID(GameResID::GOLD), offered.getNum(), price, count, EMarketMode::RESOURCE_ARTIFACT))
+				continue;
+
+			if(ctx.cb->getResourceAmount(GameResID::GOLD) < price)
+				continue;
+
+			value += std::max<int64_t>(0,
+				artifactValueForPlayer(ctx, offered) - static_cast<int64_t>(price * goldValue));
+		}
+
+		return static_cast<int>(value);
 	}
 
 	// ---- Keymaster (10) ----------------------------------------------------------
@@ -300,10 +348,31 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 
 	// ---- Campfire (12) -----------------------------------------------------------
 	case Obj::CAMPFIRE:
-		// 100 * amount * goldValue + amount * resourceValue[type]
-		// TODO: the campfire's rolled resource type and amount are generated by the
-		// server in VCMI and are not readable from the map object.
-		return 0;
+	{
+		// 100 * amount * goldValue + amount * resourceValue[type], where `amount` is the
+		// non-gold half of the roll: a campfire pays 4-6 of a resource and 100 times that
+		// in gold, which is exactly what the formula's shared `amount` encodes.  The roll
+		// is resolved at map init and readable off the object.
+		int64_t value = 0;
+
+		for(const RewardContents & reward : readRewards(object, hero))
+		{
+			for(int r = 0; r < GameConstants::RESOURCE_QUANTITY; ++r)
+			{
+				const GameResID resource(r);
+
+				if(resource == GameResID::GOLD || reward.resources[resource] <= 0)
+					continue;
+
+				const int amount = reward.resources[resource];
+
+				value = std::max<int64_t>(value, static_cast<int64_t>(
+					CAMPFIRE_GOLD_PER_UNIT * amount * goldValue + amount * ctx.player->resourceValue(resource)));
+			}
+		}
+
+		return static_cast<int>(value);
+	}
 
 	// ---- Swan Pond (14) ----------------------------------------------------------
 	case Obj::SWAN_POND:
@@ -328,8 +397,11 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 		// + traits[reward].AI_value * count + artifactCount * playerData.artifactValue
 		int64_t value = valueOfCombat(ctx.cb, *ctx.player, hero, nullptr, armyOf(object), nullptr);
 
-		// TODO: the bank's loot table is a CRewardableObject configuration in VCMI and is
-		// not exposed to the AI callback, so only the combat term is reproduced.
+		// + resource_value(loot) + traits[reward].AI_value * count
+		// + artifactCount * playerData.artifactValue - the same pile arithmetic the
+		// Pandora arm uses, over the bank's own resolved loot table.
+		value += valueOfObjectRewards(ctx, hero, val, object, moveLimit);
+
 		return static_cast<int>(value);
 	}
 
@@ -380,7 +452,7 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 		if(ctx.victory.condition == H3VictoryCondition::FLAG_DWELLINGS && !ownedByUs(ctx, object->getOwner()))
 		{
 			// The original divides by the obelisk count here.
-			// TODO: the report writes "+5 000 000 / obeliskCount" for this arm without
+			// AMBIGUITY: the report writes "+5 000 000 / obeliskCount" for this arm without
 			// saying which count that is; the mine arm (condition 9) divides by the
 			// number of mines on the map.  The undivided override is used.
 			value += VICTORY_CONDITION_OVERRIDE;
@@ -416,9 +488,19 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 
 	// ---- Fountain of Fortune (30) ------------------------------------------------
 	case Obj::FOUNTAIN_OF_FORTUNE:
-		// SS 4.8 - "luck bonus encoded in the object; luck_value(current, bonus)".
-		// TODO: the bonus is rolled by the server in VCMI and is not readable here.
-		return 0;
+	{
+		// SS 4.8 - "luck bonus encoded in the object; luck_value(current, bonus)".  The
+		// roll is resolved at map init and carried as a LUCK bonus on the reward.
+		int bonus = 0;
+
+		for(const RewardContents & reward : readRewards(object, hero))
+			bonus = std::max(bonus, reward.luck);
+
+		if(bonus == 0)
+			return 0;
+
+		return static_cast<int>(luckMoraleToAbsolute(hero, valueOfLuck(currentLuck(hero), bonus)));
+	}
 
 	// ---- Fountain of Youth (31) --------------------------------------------------
 	case Obj::FOUNTAIN_OF_YOUTH:
@@ -651,8 +733,18 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 			value += VICTORY_CONDITION_OVERRIDE;
 		}
 
-		// TODO: the "treasure" term is the monster's carried resources / artifact, which
-		// VCMI generates server-side and does not expose here.
+		// The treasure term: what the stack carries is decided at map init and stored on
+		// the object, so it is priced exactly like any other pile of loot.
+		const auto * monster = dynamic_cast<const CGCreature *>(object);
+
+		if(monster != nullptr)
+		{
+			value += ctx.player->resourceCost(monster->resources);
+
+			if(monster->gainedArtifact.hasValue() && !backpackFull(hero))
+				value += ctx.player->artifactValue();
+		}
+
 		return static_cast<int>(value);
 	}
 
@@ -699,38 +791,49 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 		// growth on all seven dwelling levels - which is why an AI with a strong Grail
 		// town chases obelisks and one without ignores them.
 		//
-		// TODO(VCMI): the per-player obelisk-visited mask and the map's obelisk count
-		// are not exposed to an AI callback.  Everything else is in place.
-		return 0;
+		// The visited mask is CTeamVisited::players on the obelisk itself, and the count
+		// is a scan of the map's visitable objects - both reachable from the AI.
+	{
+		const auto * obelisk = dynamic_cast<const CGObelisk *>(object);
+
+		if(obelisk == nullptr || obelisk->wasVisited(ctx.player->getColor()))
+			return 0;
+
+		// "if (no Grail on this map) return 0" and "if (the dig site is already pinned)
+		// return 0": getGrailPos answers both - an invalid position means no Grail, and a
+		// known-ratio of 1 means every obelisk has been visited and the spot is fixed.
+		double knownRatio = 0.0;
+		const int3 grailPos = ctx.cb->getGrailPos(&knownRatio);
+
+		if(!grailPos.isValid() || knownRatio >= 1.0)
+			return 0;
+
+		int obeliskCount = 0;
+
+		for(const CGObjectInstance * candidate : ctx.cb->getAllVisitableObjs())
+			if(candidate->ID == Obj::OBELISK)
+				++obeliskCount;
+
+		if(obeliskCount == 0)
+			return 0;
+
+		return artifactValueForPlayer(ctx, ArtifactID::GRAIL) / obeliskCount;
+	}
 
 	// ---- Redwood Observatory (58) / Pillar of Fire (60) --------------------------
 	case Obj::REDWOOD_OBSERVATORY:
 	case Obj::PILLAR_OF_FIRE:
 	{
-		// SS 4.8a - 0x432220: one point per tile the object would newly reveal, plus a
-		// per-object-type bonus for anything revealed with an object on it.  The radius
-		// is 20 for these two (10 for the Eye of the Magi, SS 4G.3).
-		int revealed = 0;
+		// SS 4.8a - 0x432220: one point per tile the object would newly reveal.  The
+		// radius is 20 for these two (10 for the Eye of the Magi, SS 4G.3); where the
+		// object's own reward names a radius, that one is used instead.
+		int radius = SCOUTING_RADIUS;
 
-		for(int dy = -SCOUTING_RADIUS; dy <= SCOUTING_RADIUS; ++dy)
-		{
-			for(int dx = -SCOUTING_RADIUS; dx <= SCOUTING_RADIUS; ++dx)
-			{
-				if(std::sqrt(static_cast<double>(dx * dx + dy * dy)) > SCOUTING_RADIUS + 0.5)
-					continue;
+		for(const RewardContents & reward : readRewards(object, hero))
+			if(reward.revealRadius != 0)
+				radius = reward.revealRadius;
 
-				const int3 probe(tile.x + dx, tile.y + dy, tile.z);
-
-				if(!ctx.cb->isInTheMap(probe) || ctx.cb->isVisible(probe))
-					continue;
-
-				++revealed;
-			}
-		}
-
-		// The per-object bonus table (0x6925AC) is a map-content lookup the AI cannot
-		// reach through a callback; the tile count is the dominant term.
-		return revealed;
+		return newlyRevealedTiles(ctx, tile, radius);
 	}
 
 	// ---- Star Axis (61) ----------------------------------------------------------
@@ -848,9 +951,56 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 		//   return reward - what handing the reward over costs us;
 		// where "today" is ((month * 4 + week) - 5) * 7 + dayOfWeek (SS 4.8a).
 		//
-		// TODO(VCMI): the reward and the completion test live on CQuest, which models
-		// them as a CRewardableObject configuration rather than a valued reward.
-		return 0;
+		// Quest::reward is the reward VisitInfo and Quest::mission is the limiter that
+		// spells out what the hero must hand over, so both halves are readable.
+	{
+		const auto * hut = dynamic_cast<const QuestSource *>(object);
+		const Quest * quest = hut != nullptr ? hut->getActiveQuest() : nullptr;
+
+		if(quest == nullptr || quest->isCompleted || !quest->reward.has_value())
+			return 0;
+
+		int rewardLimit = moveLimit;
+		const int64_t reward = valueOfReward(ctx, hero, val,
+			readReward(quest->reward->reward, hero), rewardLimit);
+
+		// "if (the hero has not been told the terms) return max(reward, 20)" - the AI
+		// walks to an unknown seer to hear them out.
+		if(!quest->isKnownTo(ctx.player->getColor()))
+			return static_cast<int>(std::max<int64_t>(reward, SEER_HUT_UNKNOWN_FLOOR));
+
+		// "if (the quest has expired) return 0"
+		if(quest->lastDay >= 0 && ctx.cb->getCalendar().getCurrentDay() - 1 > quest->lastDay)
+			return 0;
+
+		// "if (the hero cannot satisfy it) return 0"
+		if(!quest->checkQuest(hero))
+			return 0;
+
+		moveLimit = rewardLimit;
+
+		// "return reward - what handing the reward over costs us": the mission limiter is
+		// where a map quest keeps the goods it takes - but only when the quest is a toll.
+		// A quest that merely *tests* for an artifact or a level costs nothing to satisfy,
+		// and isToll is the engine's own answer to which is which.
+		int64_t cost = 0;
+
+		if(quest->isToll())
+		{
+			cost = ctx.player->resourceCost(quest->mission.resources);
+			cost += static_cast<int64_t>(quest->mission.artifacts.size()) * ctx.player->artifactValue();
+
+			for(const CStackBasicDescriptor & stack : quest->mission.creatures)
+			{
+				const CCreature * creature = stack.getCreature();
+
+				if(creature != nullptr)
+					cost += static_cast<int64_t>(creature->getAIValue()) * stack.getCount();
+			}
+		}
+
+		return static_cast<int>(reward - cost);
+	}
 
 	// ---- Shipwreck Survivor (86) -------------------------------------------------
 	case Obj::SHIPWRECK_SURVIVOR:
@@ -867,9 +1017,12 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 	case Obj::SHRINE_OF_MAGIC_INCANTATION:
 	case Obj::SHRINE_OF_MAGIC_GESTURE:
 	case Obj::SHRINE_OF_MAGIC_THOUGHT:
-		// SS 4.8 -> 0x5298D0, i.e. exactly AI_get_spell_value with its three gates.
-		// TODO: which spell the shrine holds is a server-side roll in VCMI.
-		return 0;
+		// SS 4.8 -> 0x5298D0, i.e. exactly AI_get_spell_value with its three gates.  The
+		// spell is rolled at map init and carried on the shrine's reward.
+		if(visitedByHero(hero, object))
+			return 0;
+
+		return static_cast<int>(valueOfObjectRewards(ctx, hero, val, object, moveLimit));
 
 	// ---- Sirens (92) -------------------------------------------------------------
 	case Obj::SIRENS:
@@ -924,9 +1077,18 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 		if(guards != nullptr && guards->stacksCount() > 0)
 			value = valueOfCombat(ctx.cb, *ctx.player, hero, nullptr, guards, nullptr) + SPELL_SCROLL_FLOOR;
 
-		// TODO(VCMI): the scroll's spell lives on the CArtifactInstance the object
-		// carries.  Where a caller can reach it, the remaining term is exactly
-		// aiGetSpellValue(hero, spell) gated on !hero->canCastThisSpell(spell).
+		// The scroll's spell lives on the CArtifactInstance the object carries.
+		const auto * scrollObject = dynamic_cast<const CGArtifact *>(object);
+		const CArtifactInstance * instance = scrollObject != nullptr ? scrollObject->getArtifactInstance() : nullptr;
+
+		if(instance != nullptr)
+		{
+			const SpellID spell = instance->getScrollSpellID();
+
+			if(spell.hasValue() && !hero->canCastThisSpell(spell.toSpell()))
+				value += aiGetSpellValue(hero, spell);
+		}
+
 		return static_cast<int>(value);
 	}
 
@@ -1013,10 +1175,17 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 	case Obj::TREASURE_CHEST:
 	{
 		// SS 4.8 -> 0x52B4E0: three tiers, each max(xpValue * k, goldValue * g), plus
-		// artifactValue / 20.
-		// TODO: which of the three tiers a given chest rolls is decided server-side in
-		// VCMI, so the mean of the three is not available either; the first tier is used
-		// and the artifact term added, exactly as the handler shapes it.
+		// artifactValue / 20.  The tier a chest rolled is fixed at map init, and the
+		// object offers exactly that tier's gold and experience arms - so the "max of the
+		// two" the handler takes is the choice the player is actually offered, which is
+		// what valueOfObjectRewards returns for a select-one object.  The /20 term was an
+		// expectation over the unknown top tier; with the roll known, the artifact tier
+		// prices its artifact directly instead.
+		const int64_t rolled = valueOfObjectRewards(ctx, hero, val, object, moveLimit);
+
+		if(rolled > 0)
+			return static_cast<int>(rolled);
+
 		const int64_t xpTerm = static_cast<int64_t>(val.experienceValue * TREASURE_CHEST_XP[0]);
 		const int64_t goldTerm = static_cast<int64_t>(goldValue * TREASURE_CHEST_GOLD[0]);
 
@@ -1102,9 +1271,13 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 
 	// ---- Water Wheel (109) -------------------------------------------------------
 	case Obj::WATER_WHEEL:
-		// SS 4.8 - "gold, halved after the first week".
-		// TODO: the report does not give the base amount.
-		return 0;
+		// SS 4.8 - "gold, halved after the first week".  The amount is on the object: a
+		// Water Wheel's reward already carries the week-dependent sum, so reading it
+		// reproduces both the base and the halving.
+		if(visitedByPlayer(ctx, object))
+			return 0;
+
+		return static_cast<int>(valueOfObjectRewards(ctx, hero, val, object, moveLimit));
 
 	// ---- Watering Hole (110) -----------------------------------------------------
 	case Obj::WATERING_HOLE:
@@ -1136,9 +1309,11 @@ int objectValue(H3Context & ctx, const CGHeroInstance * hero, const int3 & tile,
 
 	// ---- Witch Hut (113) ---------------------------------------------------------
 	case Obj::WITCH_HUT:
-		// SS 4.8 - "secondary-skill value", i.e. hero::AI_secondary_skill_value.
-		// TODO: which skill the hut teaches is a server-side roll in VCMI.
-		return 0;
+		// SS 4.8 - "secondary-skill value", i.e. hero::AI_secondary_skill_value.  The
+		// skill is rolled at map init and carried on the hut's reward; valueOfReward
+		// runs it through the same SS 4.12 valuer, and returns 0 when the hero already
+		// has the skill or cannot learn another.
+		return static_cast<int>(valueOfObjectRewards(ctx, hero, val, object, moveLimit));
 
 	default:
 		// SS 4.8 - the 0x5294E5 default arm.  Boat, Border Guard, Cartographer, Cover of

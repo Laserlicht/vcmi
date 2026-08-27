@@ -10,6 +10,8 @@
 #include "StdInc.h"
 #include "H3Movement.h"
 
+#include "H3AdventureSpells.h"
+
 #include "H3CombatEstimate.h"
 #include "H3ObjectValue.h"
 #include "H3Valuations.h"
@@ -144,7 +146,7 @@ std::vector<HeroDestination> scanObjects(
 		int value;
 		int moveLimit = limit;
 
-		if(object == nullptr)
+		if(object == nullptr && tile != ctx.player->grailDigSite())
 		{
 			// SS 4.4 - "the exploration drive is not a separate system"
 			if(ctx.cb->isVisible(tile) && ownsTown)
@@ -481,6 +483,27 @@ void moveToDestination(H3Context & ctx, const CGHeroInstance * hero, HeroDestina
 
 	if(path.empty())
 	{
+		// SS 4F - this is where the four adventure spells fire: the route the hero wants
+		// does not exist in the plane it is currently in.  Fly and Water Walk move it to
+		// the other plane, so the flood has to be re-run; Summon Boat and Dimension Door
+		// change where the hero stands, so the route is rebuilt from there.
+		if(castAdventureSpells(ctx, hero, destination.coord))
+		{
+			hero = ctx.cb->getHero(hero->id);
+
+			if(hero == nullptr)
+			{
+				state.done = true;
+				return;
+			}
+
+			search.compute(ctx.cb, hero, hero->visitablePos(), PATH_BUILD_LIMIT, -1, ctx.openMap);
+			path = search.buildPath(destination.coord);
+		}
+	}
+
+	if(path.empty())
+	{
 		// SS 4B.11 - "A hero with no route loses its turn."
 		state.done = true;
 		return;
@@ -550,13 +573,22 @@ void moveToDestination(H3Context & ctx, const CGHeroInstance * hero, HeroDestina
 	// carries a single layer for the whole path.  So the leg is cut at the first layer
 	// change, which is the same rule SS 4B.11 applies to teleports: a transition ends the
 	// plan, and the destination chooser runs again next tick.
-	const auto layerOf = [&ctx](const int3 & tile) -> EPathfindingLayer
+	// SS 4F.3 - the same plane test H3Search makes, so the pack's layer matches the one
+	// the route was actually found in.
+	const bool flying = hero->hasBonusOfType(BonusType::FLYING_MOVEMENT);
+	const bool waterWalking = hero->hasBonusOfType(BonusType::WATER_WALKING);
+
+	const auto layerOf = [&ctx, flying, waterWalking](const int3 & tile) -> EPathfindingLayer
 	{
+		if(flying)
+			return EPathfindingLayer::AIR;
+
 		const TerrainTile * terrain = ctx.cb->getTile(tile, false);
 
-		return (terrain != nullptr && terrain->isWater())
-			? EPathfindingLayer::SAIL
-			: EPathfindingLayer::LAND;
+		if(terrain == nullptr || !terrain->isWater())
+			return EPathfindingLayer::LAND;
+
+		return waterWalking ? EPathfindingLayer::WATER : EPathfindingLayer::SAIL;
 	};
 
 	const EPathfindingLayer layer = layerOf(allowed.front());
@@ -598,13 +630,6 @@ void moveToDestination(H3Context & ctx, const CGHeroInstance * hero, HeroDestina
 	state.destinationCostEstimate = destination.moveCost;
 
 	ctx.cb->moveHero(current, pathToMove, false, layer);
-
-	// SS 4F - the AI's complete adventure-spell behaviour is four spells:
-	//   Summon Boat (0), Fly (6), Water Walk (7), Dimension Door (8).
-	// TODO: all four are triggered from inside the move driver, at the step where the
-	// search plane flips (flag 0x400) or where a Dimension Door transition is marked
-	// (flag 0x800).  Neither flag is modelled by this reimplementation's search (see
-	// H3Search::index), so none of the four is cast.
 }
 
 // ---------------------------------------------------------------------------------
@@ -708,6 +733,18 @@ void heroTakeTurn(H3Context & ctx, const CGHeroInstance * hero, bool unlimitedRa
 
 	if(hero == nullptr)
 		return;
+
+	// SS 4.14 - the hero arrived on the Grail dig site.  Digging is what the whole
+	// obelisk chase is for, and it takes the rest of the turn.
+	if(hero->visitablePos() == ctx.player->grailDigSite()
+		&& ctx.cb->getTileDigStatus(hero->visitablePos(), false) == EDiggingStatus::CAN_DIG)
+	{
+		ctx.cb->dig(hero);
+
+		(*ctx.heroStates)[hero->id].done = true;
+
+		return;
+	}
 
 	// SS 4.3 - landing on an explored magus hut resets the magus-hut value and wakes
 	// every hero of this player up again.

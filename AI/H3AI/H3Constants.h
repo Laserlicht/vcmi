@@ -13,7 +13,8 @@
  * Every magic number in this AI comes from the reverse-engineering report of the
  * original Heroes III (Complete 4.0) adventure AI.  Section numbers in comments
  * (e.g. "SS 4.11") refer to that report.  Nothing here is invented: if the report
- * does not state a value, the symbol carries a TODO instead of a guess.
+ * does not state a value, the symbol says so at its definition instead of carrying a
+ * silent guess.
  */
 
 namespace H3AI
@@ -118,6 +119,10 @@ inline constexpr int MOVEMENT_QUANTUM_DENOMINATOR = 100;
 
 /// SS 4.6 - an enemy hero threatens everything within movementRemaining + 300.
 inline constexpr int THREAT_RANGE_SLACK = 300;
+
+/// SS 4G.4 - the kingdom-goal threat flood is wider than the danger map's: it runs from
+/// each enemy hero with (that hero's MAXIMUM movement + 800), i.e. about 1.5 turns.
+inline constexpr int KINGDOM_THREAT_RANGE_SLACK = 800;
 
 /// SS 4A.1 - 0x678344, indexed by the number of marketplaces the player owns,
 /// clamped to [1,10].  Index 0 is unused (the clamp never produces it).
@@ -258,6 +263,7 @@ inline constexpr float HILL_FORT_GOLD_DISCOUNT[7] = { 0.0f, 0.25f, 0.5f, 0.75f, 
 /// SS 4.8a - 0x432220 is called with radius 20 for the Redwood Observatory and the
 /// Pillar of Fire, and with radius 10 for the Eye of the Magi sweep (SS 4G.3).
 inline constexpr int SCOUTING_RADIUS = 20;
+inline constexpr int EYE_OF_MAGI_RADIUS = 10;
 
 /// SS 5D.3 - the artifacts hero::creature_speed_bonus (0x4E5AA0) and
 /// hero::creature_hp_bonus (0x4E5B80) name by raw id, checked against ARTRAITS.TXT.
@@ -301,6 +307,14 @@ inline constexpr int PORTAL_TRANSITION_COST = 50;
 /// SS 4B.11 - the step-list builder asks for a path far longer than any real
 /// movement allowance so that the list spans the whole route.
 inline constexpr int PATH_BUILD_LIMIT = 99999;
+
+/// SS 4.8 - the Campfire arm: "100 * amount * goldValue + amount * resourceValue[type]",
+/// where `amount` is the non-gold half of the roll.
+inline constexpr int CAMPFIRE_GOLD_PER_UNIT = 100;
+
+/// SS 4.8a - the Seer Hut arm's floor for a quest whose terms the hero has not been told
+/// yet: "return max(reward, 20)".
+inline constexpr int SEER_HUT_UNKNOWN_FLOOR = 20;
 
 /// SS 4.9 - experience_for_level uses a geometric tail with this ratio above level 12.
 inline constexpr double EXPERIENCE_GEOMETRIC_RATIO = 1.2;

@@ -31,11 +31,12 @@ H3Search::~H3Search() = default;
 size_t H3Search::index(const int3 & tile) const
 {
 	// SS 4D.1 - the engine keeps two planes per map level, selected by cell flag 0x400
-	// (the airborne / water-walking traversal state, resolved in SS 4F.3).
-	// TODO: the second plane is not modelled here.  Reproducing it requires Fly and
-	// Water Walk to create distinct search states for the same tile, which in turn
-	// needs the engine's own layer handling; VCMI expresses that as EPathfindingLayer
-	// rather than as a duplicated tile grid.
+	// (the airborne / water-walking traversal state, resolved in SS 4F.3).  One plane is
+	// enough here: both spells that flip it last the whole day, so a hero is airborne or
+	// it is not for an entire turn, and compute() reads which off the hero's own bonuses
+	// (VCMI's EPathfindingLayer) instead of duplicating the grid.  What the second plane
+	// bought the original - a route that exists only after casting - is produced by the
+	// move driver casting first and re-running the flood (see H3AdventureSpells).
 	return (static_cast<size_t>(tile.z) * mapSize.y + tile.y) * mapSize.x + tile.x;
 }
 
@@ -95,6 +96,12 @@ void H3Search::compute(CCallback * cb, const CGHeroInstance * hero, const int3 &
 	options.ignoreGuards = false;
 
 	CPathfinderHelper helper(*cb, hero, options);
+
+	// SS 4F.3 - which of the two traversal planes this hero is in.  Both are read from
+	// the hero's live bonuses, so casting Fly or Water Walk and re-running the flood is
+	// what moves it between planes.
+	const bool flying = helper.isLayerAvailable(EPathfindingLayer::AIR);
+	const bool waterWalking = helper.isLayerAvailable(EPathfindingLayer::WATER);
 
 	const int maxMovePoints = std::max(1, hero->movementPointsLimit());
 	const int baseMovementCost = static_cast<int>(cb->getSettings().getInteger(EGameSettings::HEROES_MOVEMENT_COST_BASE));
@@ -184,12 +191,17 @@ void H3Search::compute(CCallback * cb, const CGHeroInstance * hero, const int3 &
 			if(blockedTile)
 				continue;
 
-			if(!helper.canMoveBetween(current, next))
+			// An airborne hero crosses the land / water boundary freely; on the ground
+			// that transition is what canMoveBetween refuses.
+			if(!flying && !helper.canMoveBetween(current, next))
 				continue;
 
-			const EPathfindingLayer destLayer = destTile->isWater()
-				? EPathfindingLayer::SAIL
-				: EPathfindingLayer::LAND;
+			EPathfindingLayer destLayer = EPathfindingLayer::LAND;
+
+			if(flying)
+				destLayer = EPathfindingLayer::AIR;
+			else if(destTile->isWater())
+				destLayer = waterWalking ? EPathfindingLayer::WATER : EPathfindingLayer::SAIL;
 
 			const int remaining = movementLimit - here.cost;
 

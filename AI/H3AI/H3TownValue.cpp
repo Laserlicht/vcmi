@@ -19,6 +19,7 @@
 #include "../../lib/CPlayerState.h"
 #include "../../lib/StartInfo.h"
 #include "../../lib/callback/CCallback.h"
+#include "../../lib/callback/Calendar.h"
 #include "../../lib/entities/faction/CTown.h"
 #include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/mapObjects/CGTownInstance.h"
@@ -204,10 +205,14 @@ int townCaptureValue(H3Context & ctx, const CGHeroInstance * hero, const CGTownI
 	// SS 4.8a - gpGame + 0x1F63E is the DAY OF THE WEEK (1..7), not a mode word;
 	// + 0x1F640 is the week and + 0x1F642 the month, which the Seer Hut's date
 	// arithmetic ((month * 4 + week) - 5) * 7 + day confirms.  Adding the day of the
-	// week makes the growth term tip over into "a whole week" late in the week.
+	// week makes the growth term tip over into "a whole week" late in the week, which is
+	// exactly what the AI should think: a town taken on day 6 is a town whose dwellings
+	// refill tomorrow.  (VCMI makes the week length a setting, so the literal 7 is
+	// written as "the length of a week".)
 	const int maxMp = std::max(1, hero->movementPointsLimit());
-	const int weeksAhead = (moveLimit - hero->movementPointsRemaining()) / maxMp;
-	const bool wholeWeek = weeksAhead >= 7;
+	const Calendar calendar = ctx.cb->getCalendar();
+	const int weeksAhead = (moveLimit - hero->movementPointsRemaining()) / maxMp + calendar.getDayOfWeek();
+	const bool wholeWeek = weeksAhead >= calendar.getDaysInWeek();
 
 	for(size_t level = 0; level < town->creatures.size(); ++level)
 	{
@@ -320,7 +325,8 @@ int townValue(H3Context & ctx, const CGHeroInstance * hero, const CGTownInstance
 			return static_cast<int>(v);
 		}
 
-		// TODO: the report elides the rest of the swap arm ("...").
+		// GAP: the report elides the rest of the swap arm ("..."), so only the
+		// documented 80 %-strength early-out above is applied.
 	}
 
 	return static_cast<int>(std::clamp<int64_t>(v, ABSOLUTE_NO_GO, std::numeric_limits<int>::max()));

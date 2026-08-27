@@ -116,14 +116,22 @@ void H3Player::beginTurn()
 	//      week of recruitment across all 14 dwelling slots.  That total is what the
 	//      supply / threat model treats as already-committed spending;
 	//   6. compute_wants, then the Grail estimate.
-	// Steps 1 and 4 are engine-side bookkeeping VCMI has no equivalent for.
+	// Step 1 is engine-side bookkeeping VCMI has no equivalent for (the AI-private hero
+	// flags live in HeroAIState and are cleared by the turn driver).  Step 4's product is
+	// computed on demand instead of cached: see H3Kingdom's townUnderThreat.
 	computeResourceSupplyAndThreats();
 	computeWants();
 
-	// SS 4.14 - AI_update_grail_guess (0x4BAE50 -> 0x52C9B0).  The report explicitly
-	// leaves the obelisk-area reduction unexpanded ("map-geometry bookkeeping shared
-	// with the UI"), so the cached guess is not reproduced.
-	// TODO: Grail dig-site estimate.
+	// SS 4.14 - AI_update_grail_guess (0x4BAE50 -> 0x52C9B0).  The report leaves the
+	// obelisk-area reduction unexpanded ("map-geometry bookkeeping shared with the UI"),
+	// and VCMI keeps that same bookkeeping behind getGrailPos, whose out-parameter is
+	// exactly "what share of the puzzle map this team has uncovered".  So the narrowing
+	// area is not modelled; only its endpoint is - a site pinned down to a single tile,
+	// which is the only state the AI can actually act on.
+	double knownRatio = 0.0;
+	const int3 site = cb->getGrailPos(&knownRatio);
+
+	grailSite = (knownRatio >= 1.0 && site.isValid()) ? site : int3(-1, -1, -1);
 }
 
 void H3Player::computeWants()
@@ -405,13 +413,14 @@ bool H3Player::planTrades(const ResourceSet & cost) const
 	}
 
 	// SS 4G.7 - the trade machinery is four routines, and the last one commits:
-	//   0x42A2B0  can the deficit be covered?
+	//   0x42A2B0  can the deficit be covered?          <- this routine
 	//   0x42A580  choose which resource to sell, and at what rate
 	//   0x42AB40  re-validate the plan once built
 	//   0x42AC20  EXECUTE the trades
 	// The same entry point both prices a purchase and pays for it, which is why
-	// AI_build_one_building reaches it through reserve_funds.  An AI cannot commit a
-	// market trade in VCMI without a callback, so this answers only the first question.
+	// AI_build_one_building reaches it through reserve_funds.  Here the two halves are
+	// separate: this one answers the question, and H3Kingdom's doTrades commits, running
+	// from manage_kingdom's step 4 and from a hero standing in a marketplace.
 	return surplusValue >= deficitValue;
 }
 

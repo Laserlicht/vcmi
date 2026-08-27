@@ -15,6 +15,7 @@
 #include "H3Movement.h"
 #include "H3ObjectValue.h"
 #include "H3Search.h"
+#include "H3SecondarySkills.h"
 #include "H3TownValue.h"
 #include "H3Valuations.h"
 
@@ -23,10 +24,13 @@
 #include "../../lib/StartInfo.h"
 #include "../../lib/callback/CCallback.h"
 #include "../../lib/callback/Calendar.h"
+#include "../../lib/constants/Enumerations.h"
 #include "../../lib/entities/building/CBuilding.h"
 #include "../../lib/entities/faction/CTown.h"
+#include "../../lib/IGameSettings.h"
 #include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/mapObjects/CGTownInstance.h"
+#include "../../lib/mapObjects/IMarket.h"
 #include "../../lib/mapping/TerrainTile.h"
 #include "../../lib/logging/CLogger.h"
 
@@ -186,6 +190,9 @@ int evaluateBuilding(H3Context & ctx, const CGTownInstance * town, const Buildin
 		// per turn by kingdom-goal pass A (vftable 0x63B670).  The Silo arm returning -1
 		// is the mirror image of the Stronghold/Fortress arms, which only pay out WHILE
 		// under threat: the AI refuses to spend on economy with an enemy hero in reach.
+		if(townUnderThreat(ctx, town))
+			return -1;
+
 		const CBuilding * data = buildingOf(town, building);
 
 		if(data == nullptr)
@@ -270,9 +277,77 @@ int evaluateBuilding(H3Context & ctx, const CGTownInstance * town, const Buildin
 	//   Stronghold b.17:               5000 if under threat and owned, else 0
 	//   Fortress   b.21, b.22:         0 unless under threat, then garrison AI value / 20
 	//   Inferno, Dungeon:              0
-	// These are town-special buildings VCMI models differently per faction mod, so the
-	// generic default is kept; the table is recorded here for a faithful port.
+	// VCMI identifies only some of these; the rest are faction-mod configuration with no
+	// portable handle, so their arms stay at the generic default.  The two Rampart
+	// specials it does name are transcribed.
+	const CBuilding * special = buildingOf(town, building);
+
+	if(special != nullptr)
+	{
+		if(special->subId == BuildingSubID::TREASURY)
+		{
+			const Calendar calendar = ctx.cb->getCalendar();
+
+			if(calendar.getDayOfWeek() != calendar.getDaysInWeek())
+				return 0;
+
+			return static_cast<int>(ctx.cb->getResourceAmount(GameResID::GOLD) * ctx.player->goldValue() / 10.0);
+		}
+
+		if(special->subId == BuildingSubID::MYSTIC_POND)
+			return 2 * ctx.player->averageResourceValue();
+	}
+
 	return 0;
+}
+
+bool townUnderThreat(H3Context & ctx, const CGTownInstance * town)
+{
+	// SS 4G.4 - kingdom-goal pass A floods from every hero of every player NOT on our
+	// team with (that hero's maximum movement + 800) of range, and counts our towns the
+	// flood reaches.  That count is what the build planner reads as "under threat".
+	if(town == nullptr)
+		return false;
+
+	const auto cached = ctx.cachedTownThreat.find(town->id);
+
+	if(cached != ctx.cachedTownThreat.end())
+		return cached->second;
+
+	bool threatened = false;
+	const int3 gates = town->visitablePos();
+
+	for(PlayerColor p(0); p < PlayerColor::PLAYER_LIMIT && !threatened; ++p)
+	{
+		if(ctx.cb->getPlayerRelations(p, ctx.player->getColor()) != PlayerRelations::ENEMIES)
+			continue;
+
+		const PlayerState * state = ctx.cb->getPlayerState(p, false);
+
+		if(state == nullptr)
+			continue;
+
+		for(const CGHeroInstance * enemy : state->getHeroes())
+		{
+			if(enemy == nullptr || enemy->isGarrisoned())
+				continue;
+
+			H3Search flood;
+
+			flood.compute(ctx.cb, enemy, enemy->visitablePos(),
+				enemy->movementPointsLimit() + KINGDOM_THREAT_RANGE_SLACK, -1, ctx.openMap);
+
+			if(flood.at(gates).reachable)
+			{
+				threatened = true;
+				break;
+			}
+		}
+	}
+
+	ctx.cachedTownThreat[town->id] = threatened;
+
+	return threatened;
 }
 
 // ---------------------------------------------------------------------------------
@@ -415,9 +490,42 @@ void offerResourcesToAlly(H3Context & ctx, PlayerColor ally)
 			give[res] = 0;
 	}
 
-	// TODO: VCMI has no callback that lets one AI player hand resources to another
-	// outside of a trade, so the computed gift cannot be committed.  The arithmetic
-	// above is reproduced exactly so that it is available the moment such a callback is.
+	// The commit.  VCMI hands resources to another player through a marketplace
+	// (EMarketMode::RESOURCE_PLAYER) - the same channel a human uses, and the same
+	// Marketplace requirement H3 imposes - so the gift goes out through a market this
+	// player owns.  With no such market the arithmetic above simply has nowhere to go.
+	const CGTownInstance * market = nullptr;
+
+	for(const CGTownInstance * town : ctx.cb->getTownsInfo(true))
+	{
+		const std::set<EMarketMode> modes = town->availableModes();
+
+		if(modes.count(EMarketMode::RESOURCE_PLAYER) > 0)
+		{
+			market = town;
+			break;
+		}
+	}
+
+	if(market != nullptr)
+	{
+		for(int r = 0; r < GameConstants::RESOURCE_QUANTITY; ++r)
+		{
+			const GameResID res(r);
+
+			if(give[res] <= 0)
+				continue;
+
+			// The server clamps the amount to what the sender actually holds, but a
+			// request for more than that would still show up as a complaint.
+			const int amount = std::min<int>(give[res], us->resources[res]);
+
+			if(amount <= 0)
+				continue;
+
+			ctx.cb->trade(market->id, EMarketMode::RESOURCE_PLAYER, res, ally, amount, nullptr);
+		}
+	}
 
 	// SS 4.10 step 9 / SS 4B.6 - the original logs a warning for any resource that ended
 	// up negative.
@@ -430,20 +538,77 @@ void offerResourcesToAlly(H3Context & ctx, PlayerColor ally)
 // SS 4B.10a - town::AI_hero_arrival_value
 // ---------------------------------------------------------------------------------
 
+namespace
+{
+/// SS 4B.10a steps 1 and 2, played out on copies: what the candidate's army would be
+/// worth once the town has handed over its garrison (SS 4.13 / SS 4B.4) and the treasury
+/// has been spent on the town's dwellings.  Nothing here touches game state - the army
+/// planner already works on ArmyGroup snapshots, and the recruitment pass is run with
+/// fund reservation switched off so the player's own books are left alone.
+int64_t townHandoverValue(H3Context & ctx, const CGTownInstance * town, const CGHeroInstance * candidate)
+{
+	ArmyPlanner planner(ctx.cb, ctx.player);
+
+	planner.initFromTown(town);
+
+	const bool bonus = ctx.player->anyHeroHasArtifact(ArtifactID::ANGELIC_ALLIANCE);
+	const int morale = candidate->valOfBonuses(BonusType::MORALE);
+
+	ArmyGroup destination(candidate);
+	ArmyGroup source(town);
+
+	const int64_t before = destination.aiValue();
+
+	planner.destination = &destination;
+	planner.source = &source;
+	planner.mode = bonus;
+	planner.morale = morale;
+
+	// SS 4.13 - the same skill-difference gate the town visit applies: a newcomer no
+	// stronger than the hero already sitting in the town is given nothing.
+	int diff = primarySkillSum(candidate);
+	const CGHeroInstance * townHero = town->getGarrisonHero();
+
+	if(townHero != nullptr)
+		diff -= primarySkillSum(townHero);
+
+	planner.skillDiff = std::max(diff, 0);
+
+	ArmyPlanner::mergeDuplicateStacks(destination);
+	planner.normalise();
+
+	while(planner.takeBestStack(source.slotCount() > 1) > 0)
+		;
+
+	// Step 2 - and then the treasury, against the town's dwellings.
+	ResourceSet funds = ctx.cb->getResourceAmount();
+
+	planner.recruit(destination, morale, &source, &funds, false, bonus);
+
+	ArmyPlanner::writeback(destination);
+
+	return std::max<int64_t>(0, destination.aiValue() - before);
+}
+}
+
 int heroArrivalValue(H3Context & ctx, const CGTownInstance * town, const CGHeroInstance * candidate)
 {
 	// SS 4B.10a - the most elaborate piece of speculative execution in the whole
 	// adventure AI: the original performs the hire on the live game state, measures what
 	// the map looks like afterwards, and rolls everything back.
 	//
-	// TODO: an AI cannot mutate VCMI's game state, so steps 1 and 2 (become the town's
-	// hero, run the army planner as if the hero had just arrived, spend the treasury on
-	// the town's dwellings) cannot be simulated.  The scan below therefore measures the
-	// candidate with the army it already carries, not the army the town would give it.
-	// SS 4B.10a is explicit that this is what makes "a rich AI with a full Castle pay far
-	// more for a tavern hero than a poor one", so the omission changes the numbers.
+	// An AI cannot mutate VCMI's game state, so steps 1 and 2 are run on copies instead:
+	// the army planner already works on ArmyGroup snapshots, so "hand the town's garrison
+	// over and spend the treasury on its dwellings" can be played out without touching
+	// anything.  What still differs from the original is that the map scan below is made
+	// with the army the candidate carries rather than with the army it would end up with,
+	// so the hand-off enters as its own term rather than by making more of the map
+	// winnable.  SS 4B.10a is explicit that this term is what makes "a rich AI with a
+	// full Castle pay far more for a tavern hero than a poor one".
 	if(town == nullptr || candidate == nullptr)
 		return 0;
+
+	const int64_t handover = townHandoverValue(ctx, town, candidate);
 
 	// Step 3 - scan the map from the town
 	H3Search scratch;
@@ -525,8 +690,10 @@ int heroArrivalValue(H3Context & ctx, const CGTownInstance * town, const CGHeroI
 	}
 
 	// SS 4B.10a - "a second hero bought into a region already covered by an existing hero
-	// is worth roughly half, a third roughly a third."
-	return static_cast<int>((total + overlap) / n);
+	// is worth roughly half, a third roughly a third."  The town's hand-off is not
+	// subject to that division: it is worth the same whether or not another hero already
+	// covers the region.
+	return static_cast<int>((total + overlap) / n + handover);
 }
 
 // ---------------------------------------------------------------------------------
@@ -797,10 +964,10 @@ void visitOwnTown(H3Context & ctx, const CGHeroInstance * hero, const CGTownInst
 	// scratch copy of the town garrison, so the slots it emptied are exactly the ones to
 	// hand over.  Note this indexes the *garrison*, not the planner's destination layout.
 	//
-	// TODO: VCMI moves troops through swap / merge / split callbacks on concrete slots.
-	// Translating the planner's final layout into that sequence is not part of the
-	// report, so only whole stacks are transferred; a partial take (SS 4B.4's
-	// "also try leaving one behind" branch) moves the whole stack instead.
+	// VCMI moves troops through swap / merge / split callbacks on concrete slots, so the
+	// planner's final layout is translated into that sequence here: a slot the planner
+	// emptied moves whole, and a partial take (SS 4B.4's "also try leaving one behind"
+	// branch) is split out at the count the planner actually wanted.
 	for(int slot = 0; slot < GameConstants::ARMY_SIZE; ++slot)
 	{
 		const SlotID garrisonSlot(slot);
@@ -808,15 +975,36 @@ void visitOwnTown(H3Context & ctx, const CGHeroInstance * hero, const CGTownInst
 		if(!garrisonBefore.type[slot].hasValue())
 			continue;
 
+		const int remaining = source.type[slot].hasValue() ? source.count[slot] : 0;
+		const int taken = garrisonBefore.count[slot] - remaining;
+
 		// nothing was taken from this slot
-		if(source.type[slot].hasValue() && source.count[slot] == garrisonBefore.count[slot])
+		if(taken <= 0)
 			continue;
 
 		// the town must really still hold creatures there, or the server rejects the pack
 		if(!town->hasStackAtSlot(garrisonSlot))
 			continue;
 
-		ctx.cb->bulkMoveArmy(town->id, hero->id, garrisonSlot);
+		if(remaining <= 0)
+		{
+			ctx.cb->bulkMoveArmy(town->id, hero->id, garrisonSlot);
+			continue;
+		}
+
+		// getSlotFor answers with the hero's existing stack of that creature, or with a
+		// free slot; without either there is nowhere to put the split.
+		const SlotID target = hero->getSlotFor(garrisonBefore.type[slot]);
+
+		if(!target.validSlot())
+			continue;
+
+		// ArrangeStacks' split arm reads `val` as the final count in the destination
+		// slot when that slot already holds the same creature, and as the number to move
+		// when it is empty.
+		const int already = hero->hasStackAtSlot(target) ? hero->getStackCount(target) : 0;
+
+		ctx.cb->splitStack(town, hero, garrisonSlot, target, already + taken);
 	}
 
 	// SS 4.13 - the dwelling pass, and the Easy-mode skip.
@@ -901,15 +1089,29 @@ void manageKingdom(H3Context & ctx)
 	//      0x63B670 - reset clears town + 0x03 on every town, visit increments it.
 	//                 That count IS the "under threat" measure the build planner reads.
 	//      0x63B67C - reset is a bare ret; visit is 0x428580.
-	//    VCMI's AI cannot run the server's search array over enemy heroes, so the threat
-	//    count is approximated by addEnemyThreats / the danger map instead.
+	//    Pass A's product - "an enemy hero can reach this town" - is what the build
+	//    planner reads, and it is computed on demand by townUnderThreat (cached on the
+	//    context for the turn) rather than refilled into a town field here.  Pass B's
+	//    visit method (0x428580) has no recorded body, so nothing else is run.
 
 	// 3. compute_resource_values(player)
 	ctx.player->computeResourceSupplyAndThreats();
 	ctx.player->computeWants();
 
 	// 4. the greedy purchase loop: one building / creature / market action per iteration,
-	//    repeated until nothing more is worth buying.
+	//    repeated until nothing more is worth buying.  The market action comes first, so
+	//    the build loop below sees the treasury the trades produce: SS 4A.3's planner is
+	//    what tells reserve_funds a purchase is affordable "after trading", and without
+	//    the trade actually happening that promise would be empty.
+	for(const CGTownInstance * town : ctx.cb->getTownsInfo(true))
+	{
+		if(town->availableModes().count(EMarketMode::RESOURCE_RESOURCE) > 0)
+		{
+			doTrades(ctx, town, nullptr);
+			break;
+		}
+	}
+
 	std::set<std::pair<ObjectInstanceID, BuildingID>> attempted;
 
 	while(buildOneBuilding(ctx, attempted))
@@ -940,6 +1142,152 @@ void manageKingdom(H3Context & ctx)
 
 		offerResourcesToAlly(ctx, p);
 	}
+}
+
+// ---------------------------------------------------------------------------------
+// SS 4A.3 / SS 4G.7 - the commit half of the trade machinery
+// ---------------------------------------------------------------------------------
+
+void doTrades(H3Context & ctx, const IMarket * market, const CGHeroInstance * hero)
+{
+	// SS 4G.7 names four routines and says the last one commits:
+	//   0x42A2B0  can the deficit be covered?      (H3Player::planTrades)
+	//   0x42A580  choose which resource to sell, and at what rate
+	//   0x42AB40  re-validate the plan once built
+	//   0x42AC20  EXECUTE the trades
+	// Only the first is specified.  What is sold here is exactly what planTrades counts
+	// as sellable - the surplus left after the hard floor of 20 and after the
+	// supply / demand cap - and it is sold for whichever resource the kingdom is
+	// shortest of, which is the only ordering the supply/threat model supplies.
+	if(market == nullptr || !market->allowsTrade(EMarketMode::RESOURCE_RESOURCE))
+		return;
+
+	const PlayerState * state = ctx.cb->getPlayerState(ctx.player->getColor(), false);
+
+	if(state == nullptr)
+		return;
+
+	const std::vector<TradeItemBuy> tradeable = market->availableItemsIds(EMarketMode::RESOURCE_RESOURCE);
+
+	const auto isTradeable = [&tradeable](const GameResID & resource)
+	{
+		return std::find(tradeable.begin(), tradeable.end(), TradeItemBuy(resource)) != tradeable.end();
+	};
+
+	// The shortages, worst first.
+	std::vector<GameResID> wanted;
+
+	for(int r = 0; r < GameConstants::RESOURCE_QUANTITY; ++r)
+	{
+		const GameResID resource(r);
+
+		if(ctx.player->demand(resource) > ctx.player->supply(resource) && isTradeable(resource))
+			wanted.push_back(resource);
+	}
+
+	std::sort(wanted.begin(), wanted.end(), [&ctx](const GameResID & a, const GameResID & b)
+	{
+		const double left = (ctx.player->demand(a) - ctx.player->supply(a)) * ctx.player->resourceValue(a);
+		const double right = (ctx.player->demand(b) - ctx.player->supply(b)) * ctx.player->resourceValue(b);
+
+		return left > right;
+	});
+
+	// A local copy of the purse, so several trades in one visit stay consistent without
+	// waiting for the server to answer each one.
+	ResourceSet purse = state->resources;
+
+	for(const GameResID & buy : wanted)
+	{
+		for(int r = 0; r < GameConstants::RESOURCE_QUANTITY; ++r)
+		{
+			const GameResID sell(r);
+
+			if(sell == buy || !isTradeable(sell))
+				continue;
+
+			// SS 4A.3's sellable surplus, verbatim.
+			const int reserve = std::max(ctx.player->reserved(sell), TRADE_RESERVE_FLOOR);
+			int surplus = purse[sell] - reserve;
+
+			surplus = std::min(surplus, ctx.player->supply(sell) - ctx.player->demand(sell));
+
+			if(surplus <= 0)
+				continue;
+
+			int give = 0;
+			int get = 0;
+
+			if(!market->getOffer(sell.getNum(), buy.getNum(), give, get, EMarketMode::RESOURCE_RESOURCE) || give <= 0)
+				continue;
+
+			// tradeResources refuses a deal that does not use whole offer units.
+			const int deals = surplus / give;
+
+			if(deals <= 0)
+				continue;
+
+			// Never trade away more value than is bought back: the exchange rate at a
+			// poor market can be bad enough that covering a shortage costs more than the
+			// shortage is worth.
+			const double sold = deals * give * ctx.player->resourceValue(sell);
+			const double bought = deals * get * ctx.player->resourceValue(buy);
+
+			if(sold > bought)
+				continue;
+
+			ctx.cb->trade(market->getObjInstanceID(), EMarketMode::RESOURCE_RESOURCE, sell, buy, deals * give, hero);
+
+			purse[sell] -= deals * give;
+			purse[buy] += deals * get;
+		}
+	}
+
+	ctx.player->computeWants();
+}
+
+void buyUniversitySkill(H3Context & ctx, const IMarket * market, const CGHeroInstance * hero)
+{
+	if(market == nullptr || hero == nullptr || !hero->canLearnSkill())
+		return;
+
+	if(!market->allowsTrade(EMarketMode::RESOURCE_SKILL))
+		return;
+
+	const int cost = ctx.cb->getSettings().getInteger(EGameSettings::MARKETS_UNIVERSITY_GOLD_COST);
+
+	if(ctx.cb->getResourceAmount(GameResID::GOLD) < cost)
+		return;
+
+	SecondarySkill best = SecondarySkill::NONE;
+	int bestValue = 0;
+
+	for(const TradeItemBuy & offered : market->availableItemsIds(EMarketMode::RESOURCE_SKILL))
+	{
+		const SecondarySkill skill = offered.as<SecondarySkill>();
+
+		if(hero->getSecSkillLevel(skill) > 0 || !hero->canLearnSkill(skill))
+			continue;
+
+		// SS 4.12's valuer, with the army term on - the same reading heroGotLevel uses.
+		const int value = secondarySkillValue(ctx, hero, skill, true);
+
+		if(value > bestValue)
+		{
+			bestValue = value;
+			best = skill;
+		}
+	}
+
+	if(best == SecondarySkill::NONE)
+		return;
+
+	// The purchase has to be worth its price, measured the same way every other object
+	// handler measures a gold cost.
+	if(bestValue < static_cast<int>(cost * ctx.player->goldValue()))
+		return;
+
+	ctx.cb->trade(market->getObjInstanceID(), EMarketMode::RESOURCE_SKILL, GameResID(GameResID::GOLD), best, 1, hero);
 }
 
 }

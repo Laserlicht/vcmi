@@ -13,6 +13,7 @@
 
 #include "../../lib/ResourceSet.h"
 #include "../../lib/constants/EntityIdentifiers.h"
+#include "../../lib/int3.h"
 
 #include <array>
 #include <map>
@@ -70,9 +71,9 @@ public:
 	int averageResourceValue() const { return avgResourceValue; }
 
 	/// SS 2 - playerData + 0x164, the average artifact value used for Pandora and
-	/// creature-bank estimates.
-	/// TODO: the report names this field but never gives the routine that fills it.
-	/// It is recomputed here as a flat placeholder; see H3Player.cpp.
+	/// creature-bank estimates.  SS 4G.1 identifies its producer: AI_prepare averages
+	/// AI_get_value_of_artifact over artifact ids 7..143, which is what the turn driver
+	/// feeds in through setAverageArtifactValue.
 	int artifactValue() const { return avgArtifactValue; }
 
 	/// SS 4G.1 - playerData + 0x164 is written by advManager::AI_prepare, not by
@@ -81,8 +82,16 @@ public:
 
 	/// SS 2 - type_AI_player + 0x04, the magus-hut value (SS 4.8, object 37).
 	int magusHutValue() const { return magusHut; }
+	/// SS 4G.3 step 3 - begin_turn's Eye-of-the-Magi sweep (0x429910) fills it.  Like the
+	/// average artifact value it needs the object valuations, so the turn driver supplies
+	/// it from where H3Context exists.
+	void setMagusHutValue(int value) { magusHut = value; }
 	/// SS 4.3 - AI_player::reset_magus_hut_value @ 0x429AB0.
 	void resetMagusHutValue() { magusHut = 0; }
+
+	/// SS 4.14 - AI_update_grail_guess (0x4BAE50 -> 0x52C9B0): the Grail dig site, once
+	/// enough obelisks have been visited to pin it to a single tile.  Invalid until then.
+	int3 grailDigSite() const { return grailSite; }
 
 	int supply(GameResID resource) const { return resourceSupply[resource.getNum()]; }
 	int demand(GameResID resource) const { return resourceDemand[resource.getNum()]; }
@@ -115,6 +124,7 @@ private:
 	int avgResourceValue = 0;
 	int avgArtifactValue = 0;
 	int magusHut = 0;
+	int3 grailSite = int3(-1, -1, -1);
 
 	std::map<CreatureID, bool> creatureThreatFlags;
 

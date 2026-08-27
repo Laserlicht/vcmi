@@ -12,6 +12,7 @@
 
 #include "H3ArtifactValue.h"
 #include "H3Kingdom.h"
+#include "H3RewardValue.h"
 #include "H3SecondarySkills.h"
 #include "H3Valuations.h"
 
@@ -40,7 +41,7 @@ namespace
 {
 /// Spend the purse on a dwelling the hero is standing in.
 ///
-/// TODO: not covered by the report - SS 4.8 only prices a dwelling, by "the value of the
+/// NOT IN REPORT: SS 4.8 only prices a dwelling, by "the value of the
 /// creatures buyable now" (H3ObjectValue.cpp), and says nothing about the purchase that
 /// follows.  Pricing a destination by what can be bought there and then walking away
 /// without buying would make every dwelling visit a no-op, so the obvious reading is
@@ -220,15 +221,22 @@ void H3AdventureAI::yourTurn(QueryID queryID)
 	});
 }
 
-void H3AdventureAI::takeTurn()
+H3Context H3AdventureAI::makeContext()
 {
-	// SS 4.1 - advManager::AI_take_turn @ 0x525E80
 	H3Context ctx;
 	ctx.cb = cb.get();
 	ctx.player = &player;
 	ctx.heroStates = &heroStates;
 	ctx.victory = getVictoryConditionInfo(cb.get());
 	ctx.openMap = openMap;
+
+	return ctx;
+}
+
+void H3AdventureAI::takeTurn()
+{
+	// SS 4.1 - advManager::AI_take_turn @ 0x525E80
+	H3Context ctx = makeContext();
 
 	// 2. value_map = calloc((levels) * MAP_W * MAP_H * sizeof(int32))
 	dangerMap.resize(cb->getMapSize());
@@ -262,6 +270,23 @@ void H3AdventureAI::takeTurn()
 		}
 
 		player.setAverageArtifactValue(n > 0 ? static_cast<int>(sum / n) : 0);
+	}
+
+	// SS 4G.3 step 3 - the Eye-of-the-Magi value (0x429910): the sum of
+	// scouting_value(radius 10) over every Eye of the Magi on the map, skipped on Easy or
+	// while townless.  It is the Hut of the Magi (SS 4.8, object 37) that consumes it, so
+	// it belongs to begin_turn but needs the object valuations, like step 2 above.
+	{
+		int magusValue = 0;
+
+		if(cb->getStartInfo()->difficulty > 0 && cb->howManyTowns() > 0)
+		{
+			for(const CGObjectInstance * object : cb->getAllVisitableObjs())
+				if(object->ID == Obj::EYE_OF_MAGI)
+					magusValue += newlyRevealedTiles(ctx, object->visitablePos(), EYE_OF_MAGI_RADIUS);
+		}
+
+		player.setMagusHutValue(magusValue);
 	}
 
 	// 5. the "computer is thinking" progress counter is pure UI.
@@ -416,12 +441,7 @@ void H3AdventureAI::heroGotLevel(const CGHeroInstance * hero, PrimarySkill pskil
 		return;
 	}
 
-	H3Context ctx;
-	ctx.cb = cb.get();
-	ctx.player = &player;
-	ctx.heroStates = &heroStates;
-	ctx.victory = getVictoryConditionInfo(cb.get());
-	ctx.openMap = openMap;
+	H3Context ctx = makeContext();
 
 	// The original is offered exactly two skills; VCMI may offer one or two.
 	SecondarySkill chosen = skills.front();
@@ -443,15 +463,17 @@ void H3AdventureAI::heroGotLevel(const CGHeroInstance * hero, PrimarySkill pskil
 
 void H3AdventureAI::commanderGotLevel(const CCommanderInstance * commander, std::vector<ui32> skills, QueryID queryID)
 {
-	// Commanders do not exist in the original game, so the report says nothing about them.
-	// TODO: no documented behaviour to reproduce.
+	// OUT OF SCOPE: commanders do not exist in the original game, so there is no
+	// behaviour to transcribe - the same reason SS 5's battle chapters are ceded to the
+	// configured battle AI.  The first offer is taken.
 	answerQueryAsync(queryID, 0);
 }
 
 void H3AdventureAI::showBlockingDialog(const std::string & text, const std::vector<Component> & components, QueryID askID, const int soundID, bool selection, bool cancel, bool safeToAutoaccept)
 {
-	// TODO: the report does not cover the AI's dialog answers.  Accepting is the choice
-	// that lets a march continue, which is what every documented decision assumes.
+	// NOT IN REPORT: the AI's dialog answers are not covered.  Accepting is the choice
+	// that lets a march continue, which is what every documented decision assumes - the
+	// object was already priced as worth visiting before the hero walked onto it.
 	answerQueryAsync(askID, 1);
 }
 
@@ -471,7 +493,8 @@ void H3AdventureAI::showTeleportDialog(const CGHeroInstance * hero, TeleportChan
 
 void H3AdventureAI::showMapObjectSelectDialog(QueryID askID, const Component & icon, const MetaString & title, const MetaString & description, const std::vector<ObjectInstanceID> & objects)
 {
-	// TODO: not covered by the report.
+	// NOT IN REPORT.  In practice this AI never opens the dialog: it is raised by Town
+	// Portal and by the View spells, and SS 4F's four spells are the only ones it casts.
 	answerQueryAsync(askID, 0);
 }
 
@@ -499,15 +522,25 @@ void H3AdventureAI::showTavernWindow(const CGObjectInstance * object, const CGHe
 
 void H3AdventureAI::showMarketWindow(const IMarket * market, const CGHeroInstance * visitor, QueryID queryID)
 {
-	// TODO: SS 4B.13's AI_plan_trades / AI_do_trades commit a trade, but the report gives
-	// neither the market nor the rate selection (TODO.md item 373), so nothing is traded.
-	answerQueryAsync(queryID, 0);
+	// SS 4A.3 / SS 4G.7 - the trade planner's commit half.  Like the recruitment window,
+	// the trades have to go out before the reply: OpenWindowQuery::blocksPack only lets
+	// TradeOnMarketplace through while the window is open.
+	answerQueryAsync(queryID, 0, [this, market, visitor]()
+	{
+		H3Context ctx = makeContext();
+
+		doTrades(ctx, market, visitor);
+	});
 }
 
 void H3AdventureAI::showUniversityWindow(const IMarket * market, const CGHeroInstance * visitor, QueryID queryID)
 {
-	// TODO: the report does not cover skill buying at a University.
-	answerQueryAsync(queryID, 0);
+	answerQueryAsync(queryID, 0, [this, market, visitor]()
+	{
+		H3Context ctx = makeContext();
+
+		buyUniversitySkill(ctx, market, visitor);
+	});
 }
 
 void H3AdventureAI::heroExchangeStarted(ObjectInstanceID hero1, ObjectInstanceID hero2, QueryID queryID)

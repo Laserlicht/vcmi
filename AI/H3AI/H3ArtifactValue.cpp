@@ -73,15 +73,32 @@ int64_t shooterAIValue(const CGHeroInstance * hero)
 }
 
 /// SS 4.9a - the Spell Scroll arm @ 0x4336F9.  `param` is the spell the scroll carries;
-/// VCMI keeps it on the artifact instance, so the caller supplies it.
-int spellScrollArtifactValue(H3Context & ctx, const CGHeroInstance * hero, bool equipped)
+/// VCMI keeps it on the artifact instance rather than on the ArtifactID, so a caller
+/// that only knows "some scroll" can say nothing about it and gets 0 - which is what an
+/// unidentified scroll is worth to this valuer anyway.
+int spellScrollArtifactValue(H3Context & ctx, const CGHeroInstance * hero, bool equipped,
+	const CArtifactInstance * instance)
 {
-	// TODO(VCMI): the scroll's spell lives on the CArtifactInstance, not on the
-	// ArtifactID, so it cannot be recovered from an id alone.  Callers that hold the
-	// instance should use aiGetSpellValue(hero, spell) directly, which is the whole
-	// body of this arm once the two "already knows it" gates pass.
-	(void)ctx; (void)hero; (void)equipped;
-	return 0;
+	(void)ctx;
+
+	if(instance == nullptr)
+		return 0;
+
+	const SpellID spell = instance->getScrollSpellID();
+
+	if(!spell.hasValue())
+		return 0;
+
+	// The two "already knows it" gates.  When the scroll is being priced as if already
+	// worn, the second gate is skipped: the scroll itself is what would be granting the
+	// spell, so counting it as "already available" would zero its own value.
+	if(hero->spellbookContainsSpell(spell))
+		return 0;
+
+	if(!equipped && hero->canCastThisSpell(spell.toSpell()))
+		return 0;
+
+	return aiGetSpellValue(hero, spell);
 }
 
 /// SS 4.9a - the Ballista arm @ 0x43373E.
@@ -552,7 +569,7 @@ int evaluateEffect(H3Context & ctx, const CGHeroInstance * hero,
 }
 
 int artifactValueForHero(H3Context & ctx, const CGHeroInstance * hero,
-	const ArtifactID & artifact, bool equipped, bool cheap)
+	const ArtifactID & artifact, bool equipped, bool cheap, const CArtifactInstance * instance)
 {
 	// SS 4.9a - AI_get_value_of_artifact @ 0x4336C0.
 	if(hero == nullptr || artifact == ArtifactID::NONE)
@@ -562,7 +579,7 @@ int artifactValueForHero(H3Context & ctx, const CGHeroInstance * hero,
 	switch(artifact.getNum())
 	{
 	case ArtifactID::SPELL_SCROLL:
-		return spellScrollArtifactValue(ctx, hero, equipped);
+		return spellScrollArtifactValue(ctx, hero, equipped, instance);
 
 	case ArtifactID::BALLISTA:
 		return ballistaArtifactValue(hero);
@@ -623,13 +640,13 @@ int artifactValueForHero(H3Context & ctx, const CGHeroInstance * hero,
 }
 
 int totalArtifactValue(H3Context & ctx, const CGHeroInstance * hero,
-	const ArtifactID & artifact, bool equipped)
+	const ArtifactID & artifact, bool equipped, const CArtifactInstance * instance)
 {
 	// SS 4.9a - hero::total_artifact_value @ 0x4339E0.
 	if(hero == nullptr)
 		return 0;
 
-	int gain = artifactValueForHero(ctx, hero, artifact, equipped, false);
+	int gain = artifactValueForHero(ctx, hero, artifact, equipped, false, instance);
 
 	if(gain < 0)
 		gain = 0;
@@ -666,7 +683,7 @@ int totalArtifactValue(H3Context & ctx, const CGHeroInstance * hero,
 		if(worn == nullptr)
 			continue;
 
-		loss = artifactValueForHero(ctx, hero, worn->getTypeId(), true, false);
+		loss = artifactValueForHero(ctx, hero, worn->getTypeId(), true, false, worn);
 	}
 
 	const int net = gain - loss;

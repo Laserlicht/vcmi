@@ -77,16 +77,22 @@ public:
 
 	const std::vector<MonsterData> & getStacks() const { return stacks; }
 
-	/// SS 4.11 - A.adjust_army(true): the AI value of the army that survived.
+	/// SS 4.11 - A.adjust_army(true): the AI value of the army that survived, including
+	/// whatever the winner's Necromancy raised out of the loser.
 	int64_t survivingArmyAIValue() const;
 
 private:
+	/// SS 5B.3 - the necromancy half of do_aftermath @ 0x426EE0.
+	void applyNecromancy(const CombatData & loser);
+
 	/// SS 5B.3 - inflict_melee_damage(damage, minCat, maxCat) @ 0x426170.
 	int64_t inflictMeleeDamage(int64_t damage, int minCategory, int maxCategory);
 
 	void kill();
 
 	std::vector<MonsterData> stacks;
+	/// The AI value of the undead do_aftermath raised for this side.
+	int64_t necromancyValue = 0;
 	const CGHeroInstance * hero = nullptr;
 	const CGHeroInstance * enemyHero = nullptr;
 	const CGTownInstance * town = nullptr;

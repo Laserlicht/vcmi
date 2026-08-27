@@ -113,8 +113,9 @@ int secondarySkillValue(H3Context & ctx, const CGHeroInstance * hero, const Seco
 	{
 	case SecondarySkill::PATHFINDING:
 		// army * T[cur] / 4.0, T = 0x681860 (doubles)
-		// TODO: SS 4.12's depth marker states the table "reads as uniform 1.0 in the
-		// image and is probably runtime-filled".  1.0 is used, which is what it holds.
+		// SS 4.12's depth marker states the table "reads as uniform 1.0 in the image and
+		// is probably runtime-filled".  1.0 is used, which is what the shipped image
+		// holds - there is no other value to transcribe.
 		return static_cast<int>(army * 1.0 / PATHFINDING_DIVISOR);
 
 	case SecondarySkill::ARCHERY:

@@ -32,7 +32,7 @@ namespace
 {
 /// SS 4B.4 / SS 4B.4 step 2 - gpGame->d[0x1F698], the "AI combat skill level" global,
 /// gates the elemental alignment override.
-/// TODO: VCMI has no equivalent setting, and the report only records that the AI reads
+/// NOT IN VCMI: there is no equivalent setting, and the report only records that the AI reads
 /// it here.  Zero is used, which selects the branch that treats the four base elementals
 /// as alignment -1.
 constexpr int AI_COMBAT_SKILL_LEVEL = 0;

@@ -66,6 +66,10 @@ private:
 	/// SS 4.1 - advManager::AI_take_turn @ 0x525E80.
 	void takeTurn();
 
+	/// The globals every valuation reaches through, assembled from this interface's
+	/// state.  Cheap enough to rebuild per call, which is what the original does.
+	H3Context makeContext();
+
 	/// Every request this AI issues runs with CCallback::waitTillRealize set, which
 	/// blocks the calling thread until the server confirms.  That must never happen on
 	/// the network dispatch thread the interface callbacks arrive on, so both the turn

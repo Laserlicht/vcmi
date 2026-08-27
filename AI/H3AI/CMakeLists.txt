@@ -1,4 +1,5 @@
 set(h3AI_SRCS
+		H3AdventureSpells.cpp
 		H3AI.cpp
 		H3ArmyPlanner.cpp
 		H3ArtifactValue.cpp
@@ -7,6 +8,7 @@ set(h3AI_SRCS
 		H3Kingdom.cpp
 		H3Movement.cpp
 		H3ObjectValue.cpp
+		H3RewardValue.cpp
 		H3Player.cpp
 		H3Search.cpp
 		H3SecondarySkills.cpp
@@ -18,6 +20,7 @@ set(h3AI_SRCS
 set(h3AI_HEADERS
 		StdInc.h
 
+		H3AdventureSpells.h
 		H3AI.h
 		H3ArmyPlanner.h
 		H3ArtifactData.h
@@ -29,6 +32,7 @@ set(h3AI_HEADERS
 		H3Kingdom.h
 		H3Movement.h
 		H3ObjectValue.h
+		H3RewardValue.h
 		H3Player.h
 		H3Search.h
 		H3SecondarySkills.h

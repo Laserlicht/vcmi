@@ -16,6 +16,7 @@
 VCMI_LIB_NAMESPACE_BEGIN
 class CGHeroInstance;
 class CGTownInstance;
+class IMarket;
 VCMI_LIB_NAMESPACE_END
 
 namespace H3AI
@@ -33,6 +34,12 @@ bool buildOneBuilding(H3Context & ctx, std::set<std::pair<ObjectInstanceID, Buil
 /// SS 4A.4 - the per-building evaluator table.
 int evaluateBuilding(H3Context & ctx, const CGTownInstance * town, const BuildingID & building);
 
+/// SS 4G.4 - town + 0x03 != 0: "an enemy hero can reach this town in about 1.5 turns".
+/// The original refills the count from kingdom-goal pass A (vftable 0x63B670), which
+/// floods from every enemy hero with (max movement + 800) of range; the same flood is
+/// run here, cached per turn on the context.
+bool townUnderThreat(H3Context & ctx, const CGTownInstance * town);
+
 /// SS 4B.6 - type_AI_player::AI_offer_resources_to_ally @ 0x429110.
 void offerResourcesToAlly(H3Context & ctx, PlayerColor ally);
 
@@ -48,5 +55,17 @@ int heroArrivalValue(H3Context & ctx, const CGTownInstance * town, const CGHeroI
 /// SS 4.13 - the driver that runs when an AI hero is standing in one of its own towns
 /// (0x42BA60).
 void visitOwnTown(H3Context & ctx, const CGHeroInstance * hero, const CGTownInstance * town);
+
+/// SS 4A.3 / SS 4G.7 - AI_do_trades (0x42A580 choose, 0x42AB40 revalidate, 0x42AC20
+/// commit): the half of the trade machinery that actually spends.  Sells the surplus
+/// AI_plan_trades measures for the resources the kingdom is short of.
+void doTrades(H3Context & ctx, const IMarket * market, const CGHeroInstance * hero);
+
+/// Buying a secondary skill at a University.
+/// NOT IN REPORT: the original AI has no University handler at all
+/// (SS 4.8 prices the object as an experience purchase, and nothing buys skills there).
+/// The obvious reading is used: the best skill the SS 4.12 valuer ranks, taken when it
+/// is worth more than the gold it costs.
+void buyUniversitySkill(H3Context & ctx, const IMarket * market, const CGHeroInstance * hero);
 
 }

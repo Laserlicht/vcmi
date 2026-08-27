@@ -10,6 +10,8 @@
 #pragma once
 
 #include "H3HeroState.h"
+
+#include <map>
 #include "H3Player.h"
 #include "H3VictoryConditions.h"
 
@@ -37,6 +39,11 @@ struct H3Context
 	/// SS 4B.1 / SS 4B.2 - the number of town records on the map.  The original reads it
 	/// as a pointer difference; here it is counted once and cached for the turn.
 	mutable int cachedTownsOnMap = -1;
+
+	/// SS 4G.4 - town + 0x03, "an enemy hero can reach this town".  The original refills
+	/// it once per turn from kingdom-goal pass A; here it is computed on demand and
+	/// cached, because the building evaluator asks for it 44 times per town.
+	mutable std::map<ObjectInstanceID, bool> cachedTownThreat;
 };
 
 }
