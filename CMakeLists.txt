@@ -56,6 +56,7 @@ option(ENABLE_NULLKILLER2_AI "Enable compilation of Nullkiller2AI library" ON)
 option(ENABLE_STUPID_AI "Enable compilation of StupidAI library" ON)
 option(ENABLE_BATTLE_AI "Enable compilation of BattleAI library" ON)
 option(ENABLE_MMAI "Enable compilation of MMAI AI library" ON)
+option(ENABLE_PHIL_AI "Enable compilation of PhilAI library" ON)
 
 # Compilation options
 
@@ -356,6 +357,9 @@ if(ENABLE_STUPID_AI)
 endif()
 if(ENABLE_BATTLE_AI)
 	add_definitions(-DENABLE_BATTLE_AI)
+endif()
+if(ENABLE_PHIL_AI)
+	add_definitions(-DENABLE_PHIL_AI)
 endif()
 if(ENABLE_MMAI)
 	add_definitions(-DENABLE_MMAI)

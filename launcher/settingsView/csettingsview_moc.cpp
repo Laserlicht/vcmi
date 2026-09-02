@@ -138,6 +138,10 @@ void CSettingsView::fillValidCombatAILibraries(QComboBox * comboBox, QString act
 	comboBox->addItem(tr("MMAI (experimental)"), "MMAI");
 #endif
 
+#ifdef ENABLE_PHIL_AI
+	comboBox->addItem(tr("PhilAI (Heroes III original AI)"), "PhilAI");
+#endif
+
 	fillValidAnyAILibraries(comboBox, activeAI);
 	comboBox->blockSignals(false);
 }
@@ -149,6 +153,10 @@ void CSettingsView::fillValidAdventureAILibraries(QComboBox * comboBox, QString 
 
 #ifdef ENABLE_NULLKILLER2_AI
 	comboBox->addItem(tr("Nullkiller2 (default, recommended)"), "Nullkiller2");
+#endif
+
+#ifdef ENABLE_PHIL_AI
+	comboBox->addItem(tr("PhilAI (Heroes III original AI)"), "PhilAI");
 #endif
 
 	fillValidAnyAILibraries(comboBox, activeAI);

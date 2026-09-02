@@ -15,6 +15,10 @@ if(ENABLE_MMAI)
 	add_subdirectory(MMAI)
 endif()
 
+if(ENABLE_PHIL_AI)
+	add_subdirectory(PhilAI)
+endif()
+
 # Adventure AI's
 add_subdirectory(EmptyAI)
 

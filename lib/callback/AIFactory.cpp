@@ -24,6 +24,10 @@
 #ifdef ENABLE_MMAI
 #  include "../../AI/MMAI/MMAI.h"
 #endif
+#ifdef ENABLE_PHIL_AI
+#  include "../../AI/PhilAI/PhilAdventureAI.h"
+#  include "../../AI/PhilAI/PhilBattleAI.h"
+#endif
 #include "../../AI/EmptyAI/CEmptyAI.h"
 
 std::shared_ptr<CGlobalAI> AIFactory::createAdventureAI(const std::string & name)
@@ -38,6 +42,17 @@ std::shared_ptr<CGlobalAI> AIFactory::createAdventureAI(const std::string & name
 		return ret;
 #else
 		throw std::runtime_error("Nullkiller2 is not available in this build!");
+#endif
+	}
+
+	if(name == "PhilAI")
+	{
+#ifdef ENABLE_PHIL_AI
+		auto ret = std::make_shared<PhilAI::PhilAdventureAI>();
+		ret->dllName = name;
+		return ret;
+#else
+		throw std::runtime_error("PhilAI is not available in this build!");
 #endif
 	}
 
@@ -71,6 +86,13 @@ std::shared_ptr<CBattleGameInterface> AIFactory::createBattleAI(const std::strin
 		throw std::runtime_error("MMAI is not available in this build!");
 #endif
 
+	if(name == "PhilAI")
+#ifdef ENABLE_PHIL_AI
+		return std::make_shared<PhilAI::PhilBattleAI>();
+#else
+		throw std::runtime_error("PhilAI is not available in this build!");
+#endif
+
 	return std::make_shared<CEmptyAI>();
 }
 
@@ -80,6 +102,10 @@ bool AIFactory::isAvailableAdventureAI(const std::string & name)
 		return true;
 #ifdef ENABLE_NULLKILLER2_AI
 	if(name == "Nullkiller2")
+		return true;
+#endif
+#ifdef ENABLE_PHIL_AI
+	if(name == "PhilAI")
 		return true;
 #endif
 	return false;
