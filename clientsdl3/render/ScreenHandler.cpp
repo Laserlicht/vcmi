@@ -741,6 +741,9 @@ static constexpr std::array<const char *, static_cast<size_t>(GpuRenderLayer::CO
 void ScreenHandler::initializeLayerTextures(const Point & logicalSize)
 {
 	VCMI_PROFILE_N("Screen: create layer textures");
+
+	// whatever was registered referred to canvases sized for the previous resolution
+	presentedCanvases = {};
 	SDL_Renderer * renderer = GpuResources::get().renderer();
 
 	// The software driver supports render targets too, but rasterizes them on the CPU -
@@ -803,6 +806,7 @@ void ScreenHandler::destroyWindow()
 		// Tracy has no way to rebuild a GPU context - so profiling ends here for this run
 		GpuProfiler::shutdown();
 		FrameTimestamps::shutdown();
+		presentedCanvases = {};
 		GpuResources::get().destroyRenderer();
 	}
 
@@ -853,6 +857,9 @@ Canvas ScreenHandler::getLayerCanvas(GpuRenderLayer layer)
 	layerActive.at(index) = true;
 	layerReleasedMask &= ~(1u << index);
 
+	// this layer is drawn the ordinary way from now on
+	presentedCanvases.at(index) = PresentedCanvas{};
+
 	return Canvas::createFromRenderTarget(layerTextures.at(index), getLogicalResolution(), CanvasScalingPolicy::AUTO);
 }
 
@@ -878,6 +885,7 @@ void ScreenHandler::clearReleasedLayers()
 
 		clearLayer(i);
 		layerActive[i] = false;
+		presentedCanvases[i] = PresentedCanvas{};
 	}
 
 	SDL_SetRenderTarget(GpuResources::get().renderer(), nullptr);
@@ -967,6 +975,19 @@ void ScreenHandler::flushRenderCommands()
 	SDL_FlushRenderer(GpuResources::get().renderer());
 }
 
+void ScreenHandler::presentFromCanvas(GpuRenderLayer layer, const Canvas & source, const std::vector<PresentedRegion> & regions)
+{
+	PresentedCanvas & presented = presentedCanvases.at(static_cast<size_t>(layer));
+
+	presented.source = source.getRenderTargetTexture();
+	presented.regions = presented.source ? regions : std::vector<PresentedRegion>{};
+}
+
+void ScreenHandler::clearPresentedCanvas(GpuRenderLayer layer)
+{
+	presentedCanvases.at(static_cast<size_t>(layer)) = PresentedCanvas{};
+}
+
 void ScreenHandler::presentScreenTexture()
 {
 	VCMI_PROFILE_N("Screen: present");
@@ -1000,12 +1021,37 @@ void ScreenHandler::presentScreenTexture()
 	SDL_RenderClear(renderer);
 
 	[[maybe_unused]] int activeLayers = 0; // only read by the profiler plot
+	[[maybe_unused]] int presentedRegions = 0;
+
 	for(size_t i = 0; i < layerTextures.size(); ++i)
+	{
+		// The canvas registered for this layer comes first, so that whatever the layer itself
+		// holds still lands on top of it. This is the copy that would otherwise have been made
+		// into the layer in the middle of the frame.
+		const PresentedCanvas & presented = presentedCanvases[i];
+
+		for(const PresentedRegion & region : presented.regions)
+		{
+			SDL_SetTextureBlendMode(presented.source, SDL_BLENDMODE_NONE);
+			SDL_SetTextureScaleMode(presented.source, SDL_SCALEMODE_NEAREST);
+
+			SDL_FRect from = CSDL_Ext::toSDLFloat(region.source);
+			SDL_FRect to = CSDL_Ext::toSDLFloat(region.target);
+
+			if(!SDL_RenderTexture(renderer, presented.source, &from, &to))
+				logGlobal->error("Failed to compose a presented canvas region: %s", SDL_GetError());
+
+			++presentedRegions;
+		}
+
 		if(layerTextures[i] && layerActive[i])
 		{
 			SDL_RenderTexture(renderer, layerTextures[i], nullptr, nullptr);
 			++activeLayers;
 		}
+	}
+
+	VCMI_PROFILE_PLOT("Screen: presented canvas regions", presentedRegions);
 
 	VCMI_PROFILE_PLOT("Screen: active GPU layers", activeLayers);
 	VCMI_PROFILE_PLOT("Screen: GPU rendering enabled", isGpuRenderingEnabled() ? 1 : 0);

@@ -29,7 +29,11 @@
 
 #include "../../lib/int3.h"
 
-MapViewCache::~MapViewCache() = default;
+MapViewCache::~MapViewCache()
+{
+	// the canvases go with this object, so nothing may be left pointing at them
+	ENGINE->screenHandler().clearPresentedCanvas(GpuRenderLayer::MAP);
+}
 
 MapViewCache::MapViewCache(const std::shared_ptr<MapViewModel> & model, bool useGpuLayer)
 	: model(model)
@@ -81,6 +85,9 @@ void MapViewCache::ensureCanvases()
 
 	// Must run on the rendering thread: this object is constructed while handling a
 	// netpack, and creating a texture there would move the GL context off the GUI thread
+	// what the screen handler was told to draw refers to the canvas about to be replaced
+	ENGINE->screenHandler().clearPresentedCanvas(GpuRenderLayer::MAP);
+
 	canvasesOnGpu = useGpu;
 	cachedAtNativeSize = cacheAtNativeSize;
 	cachedCanvasDimensions = cacheDimensions;
@@ -258,9 +265,8 @@ bool MapViewCache::isUpdatedThisFrame() const
 		&& cachedLevel == model->getLevel();
 }
 
-void MapViewCache::renderCachedTiles(Canvas & target)
+void MapViewCache::forEachCachedBand(const std::function<void(const Rect &, const Point &, const Point &)> & visit) const
 {
-	VCMI_PROFILE_N("MapCache: blit cached tiles");
 	const Rect tilesRect = model->getTilesTotalRect();
 	const Point tileSize = model->getSingleTileSize();
 	const Point cacheTileSize = model->getCacheTileSize();
@@ -307,15 +313,63 @@ void MapViewCache::renderCachedTiles(Canvas & target)
 				Point targetPosition = origin + Point(offsetX * tileSize.x, offsetY * tileSize.y);
 				Point targetSize(column.second * tileSize.x, row.second * tileSize.y);
 
-				if(cacheTileSize == tileSize)
-					target.draw(Canvas(*terrain, cacheArea), targetPosition);
-				else
-					target.drawScaled(Canvas(*terrain, cacheArea), targetPosition, targetSize);
+				visit(cacheArea, targetPosition, targetSize);
 			}
 			offsetY += row.second;
 		}
 		offsetX += column.second;
 	}
+}
+
+void MapViewCache::renderCachedTiles(Canvas & target)
+{
+	VCMI_PROFILE_N("MapCache: blit cached tiles");
+	const Point tileSize = model->getSingleTileSize();
+	const Point cacheTileSize = model->getCacheTileSize();
+
+	forEachCachedBand([&](const Rect & cacheArea, const Point & targetPosition, const Point & targetSize)
+	{
+		if(cacheTileSize == tileSize)
+			target.draw(Canvas(*terrain, cacheArea), targetPosition);
+		else
+			target.drawScaled(Canvas(*terrain, cacheArea), targetPosition, targetSize);
+	});
+}
+
+void MapViewCache::present(const Rect & targetArea)
+{
+	VCMI_PROFILE_N("MapCache: present cached tiles");
+	ensureCanvases();
+
+	// The cache is handed over rather than copied here: reading this render target in the middle
+	// of a frame makes a tiling GPU resolve it right then, which on some Android drivers stalls
+	// every process on the device. Drawn while the frame is composed, the same read is free.
+	const int scaling = ENGINE->screenHandler().getScalingFactor();
+	std::vector<PresentedRegion> regions;
+
+	forEachCachedBand([&](const Rect & cacheArea, const Point & targetPosition, const Point & targetSize)
+	{
+		// The cache canvas holds its pixels at the scaling factor, so the region inside its
+		// texture is not the logical rectangle. Letting the canvas work it out keeps this
+		// identical to what the blit into a layer would have read.
+		const Canvas band(*terrain, cacheArea);
+
+		regions.push_back({band.getRenderArea(), Rect(targetArea.topLeft() + targetPosition * scaling, targetSize * scaling)});
+	});
+
+	ENGINE->screenHandler().presentFromCanvas(GpuRenderLayer::MAP, *terrain, regions);
+
+	// the whole window was handed over, so nothing is waiting to be drawn from the cache
+	std::fill_n(tilesUpToDate.data(), tilesUpToDate.num_elements(), true);
+
+	cachedPosition = model->getMapViewCenter();
+	overlayWasVisible = false;
+	updatedThisFrame = false;
+}
+
+bool MapViewCache::needsOwnLayer(const std::shared_ptr<IMapRendererContext> & context) const
+{
+	return context->showImageOverlay() || context->showTextOverlay() || !vstd::isAlmostZero(context->viewTransitionProgress());
 }
 
 void MapViewCache::render(const std::shared_ptr<IMapRendererContext> & context, Canvas & target, bool fullRedraw)
