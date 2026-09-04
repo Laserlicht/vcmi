@@ -885,7 +885,6 @@ void ScreenHandler::clearReleasedLayers()
 
 		clearLayer(i);
 		layerActive[i] = false;
-		presentedCanvases[i] = PresentedCanvas{};
 	}
 
 	SDL_SetRenderTarget(GpuResources::get().renderer(), nullptr);
@@ -977,10 +976,18 @@ void ScreenHandler::flushRenderCommands()
 
 void ScreenHandler::presentFromCanvas(GpuRenderLayer layer, const Canvas & source, const std::vector<PresentedRegion> & regions)
 {
-	PresentedCanvas & presented = presentedCanvases.at(static_cast<size_t>(layer));
+	const size_t index = static_cast<size_t>(layer);
+
+	PresentedCanvas & presented = presentedCanvases.at(index);
 
 	presented.source = source.getRenderTargetTexture();
 	presented.regions = presented.source ? regions : std::vector<PresentedRegion>{};
+
+	// What is registered here is drawn instead of the layer, so the layer has to stop being
+	// composited - otherwise whatever it held last stays on screen on top of it. Only while it
+	// is still active, so that this does not clear an already empty layer every frame.
+	if(layerActive.at(index))
+		releaseLayer(layer);
 }
 
 void ScreenHandler::clearPresentedCanvas(GpuRenderLayer layer)
