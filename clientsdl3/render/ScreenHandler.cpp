@@ -984,10 +984,16 @@ void ScreenHandler::presentScreenTexture()
 		// GPU resolve it and, on some drivers, stalls every process on the device.
 		const PresentedCanvas & presented = presentedCanvases[i];
 
+		// This draw carries the same downscale the layer would have been composited with, so it
+		// needs that filter too - nearest drops rows of the map, shifting as the view scrolls.
+		SDL_ScaleMode presentedScaleMode = SDL_SCALEMODE_LINEAR;
+		if(!presented.regions.empty())
+			SDL_GetDefaultTextureScaleMode(renderer, &presentedScaleMode);
+
 		for(const PresentedRegion & region : presented.regions)
 		{
 			SDL_SetTextureBlendMode(presented.source, SDL_BLENDMODE_NONE);
-			SDL_SetTextureScaleMode(presented.source, SDL_SCALEMODE_NEAREST);
+			SDL_SetTextureScaleMode(presented.source, presentedScaleMode);
 
 			SDL_FRect from = CSDL_Ext::toSDLFloat(region.source);
 			SDL_FRect to = CSDL_Ext::toSDLFloat(region.target);
